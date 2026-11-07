@@ -1,4 +1,7 @@
-"""Optional fusion of match-specific automatic signals that no external game has.
+"""NOT PART OF THE SUBMISSION CHAIN -- tried and dropped (evidence fusion). Kept for transparency; solution/predict.py never
+imports it.
+
+Optional fusion of match-specific automatic signals that no external game has.
 
 Two signals exist only for the provided match, so the frame models (trained on external games)
 cannot learn them:

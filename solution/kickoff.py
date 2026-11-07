@@ -20,15 +20,18 @@ import warnings
 
 import numpy as np
 
-SEARCH_BEFORE = 250        # frames before the window start (the first window opens at the kick)
-SEARCH_AFTER = 25 * 600    # frames after the window start (10 minutes)
-TOL = 1.0                  # m of tolerance around halfway
+# Search range around a half's play window: structural, from the organisers' published grading
+# windows (DATA.md / FAQ.md: a window may open at the kick or a couple of minutes before it).
+SEARCH_BEFORE = 250        # frames looked at before the window opens
+SEARCH_AFTER = 25 * 600    # frames after the window opens (10 minutes)
+TOL = 1.5                  # m of tolerance around halfway (external choice)
 SIDE_SHARE = 0.85         # chosen on external kick-offs (solution/kickoff_check.py rederive)
-MIN_PER_TEAM = 7
+MIN_PER_TEAM = 6           # external choice
 MIN_RUN = 25               # frames the formation must hold (external choice)
 MERGE_GAP = 50             # frames: short breaks do not end it (external choice)
 REFINE = 25                # frames around the run end to look for the ball's first movement
 KICK_SPEED = 3.0           # m/s
+SPEED_WIN = 50             # frames each side of the formation's end for the speed-rise test
 SPEED_RISE = 0.2           # m/s: mean player speed must rise when the formation breaks (external)
 PLAY_SPEED = 1.2           # m/s: ... into live play (external choice)
 
@@ -77,8 +80,8 @@ def detect(m, start, stop):
     cands = []
     for mask, direction in ((pos, 1), (neg, -1)):
         for s, e in _runs(mask, MIN_RUN):
-            before = np.nanmean(speed[max(0, e - 50):e])
-            after = np.nanmean(speed[e:e + 50])
+            before = np.nanmean(speed[max(0, e - SPEED_WIN):e])
+            after = np.nanmean(speed[e:e + SPEED_WIN])
             # the kick-off formation is the one that breaks into play
             if after - before >= SPEED_RISE and after >= PLAY_SPEED:
                 cands.append((s, e, direction))
@@ -101,11 +104,8 @@ def detect_all(m):
 
 
 if __name__ == "__main__":
+    # External validation lives in solution/kickoff_check.py; here we only say whether the
+    # detector finds a kick-off in each half of the provided match.
     from solution.atd import load_atd
-    # Self-check only: kick-off frames quoted in DATA.md / FAQ.md, never used by the pipeline.
-    published = {1: 11185, 2: 113742}
-    m = load_atd("tactical", kickoff=published)
-    for h, (k, d) in detect_all(m).items():
-        print("half {}: detected kick-off {} ({:+d} frames vs the documentation), home attack "
-              "dir {} (documentation-anchored estimate {})".format(
-                  h, k, (k - published[h]) if k is not None else 0, d, m.attack_dir[h]))
+    m = load_atd("tactical")
+    print({h: (k is not None) for h, k in m.meta["kickoff"].items()})

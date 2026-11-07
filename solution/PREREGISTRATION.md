@@ -6,14 +6,14 @@ what is submitted follows these rules. Nothing is chosen by looking at the provi
 ## Why
 
 The organisers' 3-Nov email: training, and tuning of any parameter, must use external data only.
-Our v4 submission's degradation simulator was matched to aggregate, unlabelled statistics of the
+Our v4 candidate's degradation simulator was matched to aggregate, unlabelled statistics of the
 provided tracking — a grey area under that sentence. The clean-room candidate (v6) removes it.
 
 ## Candidates
 
 | | training degradation | everything else |
 |---|---|---|
-| **v4** (submitted, SHA-256 `628a4628…fafa55`) | `degrade.py`, calibrated to unlabelled statistics of the provided ATD | LightGBM + 2×2 GRUs, constrained HMM |
+| **v4** (candidate at the time, never uploaded; SHA-256 `628a4628…fafa55`) | `degrade.py`, calibrated to unlabelled statistics of the provided ATD | LightGBM + 2×2 GRUs, constrained HMM |
 | **v6** (clean room) | `degrade_random.py`: a different tracker per copy, drawn from first-principles priors; no value from the provided match | same features, same model family, decoder re-selected as below |
 
 ## Evaluation environments

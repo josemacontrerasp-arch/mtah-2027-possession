@@ -1,7 +1,7 @@
 """Produce the submission for the provided match from the trained models and tuned decoder.
 
     python -m solution.predict --name <team_name>                  # the submission
-    python -m solution.predict --name test --no-seq --no-fuse      # LightGBM only, no fusion
+    python -m solution.predict --name test --config other.json     # another pipeline config
 
 Everything it loads was fitted on external games (solution/models/). It prints aggregates only
 (label counts, number and mean length of possessions) and never reads the ground truth.
@@ -40,50 +40,23 @@ def lgbm_probs(F, n, model_file="frame_lgbm.txt", features_file="frame_lgbm_feat
     return prob
 
 
-def seq_probs(F, m, name="gru_base", device="cpu"):
-    """GRU probabilities. CPU by default: the same file on any machine, GPU or not."""
+def seq_probs(F, m, name, device="cpu"):
+    """GRU probabilities on CPU with a single thread, so the arithmetic (and its rounding) does not
+    depend on how many cores the machine has."""
+    import torch
+    torch.set_num_threads(1)
     from solution.seq import load_final, predict_full
     model, norm = load_final(device, name)
     return predict_full(model, norm, F, m.half, m.n, device=device)
 
 
-DEFAULT_PIPELINE = {
-    "members": [{"kind": "lgbm", "weight": 1.0}],
-    "decoder": "decoder.json",
-    "fusion": {"broadcast": False, "tags": False},
-    "round": 4,
-}
-
-
 def load_pipeline():
     path = os.path.join(MODEL_DIR, "pipeline.json")
-    return json.load(open(path)) if os.path.isfile(path) else DEFAULT_PIPELINE
+    if not os.path.isfile(path):
+        raise SystemExit("missing {} -- the pipeline configuration".format(path))
+    return json.load(open(path))
 
 
-def fuse(prob, m, use_broadcast=True, use_tags=True):
-    from solution.evidence import apply_adjustment, broadcast_dead_evidence, tag_team_evidence
-    graded = m.half > 0
-    adj = np.zeros((m.n, 3))
-    if use_broadcast:
-        from solution.broadcast_align import broadcast_signals
-        s = broadcast_signals(m)
-        a, st = broadcast_dead_evidence(np.where(graded[:, None], prob, np.nan),
-                                        s["live"] & graded, s["in_span"] & graded)
-        adj += a
-        print("fusion: broadcast cut-away LR {:.2f}".format(st["lr_cut_away"]))
-    if use_tags:
-        from solution.tagging import load_tags, team_evidence
-        ev = team_evidence(load_tags(), m.n)
-        for k in ev:
-            ev[k][~graded] = 0
-        a, st = tag_team_evidence(np.where(graded[:, None], prob, 1.0 / 3), ev)
-        adj += a
-        print("fusion: smart tagging LRs", {k: (round(v["lr_home"], 1), round(v["lr_away"], 1))
-                                             for k, v in st.items()})
-    out = prob.copy()
-    ok = graded & np.isfinite(prob[:, 0])
-    out[ok] = apply_adjustment(prob[ok].astype(np.float64), adj[ok]).astype(np.float32)
-    return out
 
 
 def write_submission(path, codes):
@@ -125,9 +98,8 @@ def run(name, cfg=None, validate=True, device="cpu"):
     print("members", [(mem.get("name", mem["kind"]), mem["weight"]) for mem in cfg["members"]])
     nd = int(cfg.get("round", 4))
     prob = np.round(prob, nd)        # floating-point noise must not change the file
-    fz = cfg.get("fusion", {})
-    if fz.get("broadcast") or fz.get("tags"):
-        prob = np.round(fuse(prob, m, fz.get("broadcast", False), fz.get("tags", False)), nd)
+    if any(cfg.get("fusion", {}).values()):
+        raise SystemExit("fusion of broadcast / Smart Tagging evidence is not part of this pipeline")
     dec_name = cfg["decoder"]
     dec = json.load(open(os.path.join(MODEL_DIR, dec_name)))["params"]
 

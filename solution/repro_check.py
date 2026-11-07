@@ -38,11 +38,13 @@ def main():
     if a.fresh_cache:
         shutil.rmtree(os.path.join(ROOT, "data", "cache"), ignore_errors=True)
     out = os.path.join(ROOT, "submissions", a.name + ".csv")
+    if os.path.isfile(out):
+        os.remove(out)                     # never compare a stale file from an earlier run
     r = subprocess.run([a.python, "-W", "ignore", "-m", "solution.predict", "--name", a.name],
                        cwd=ROOT, capture_output=True, text=True)
-    if not os.path.isfile(out):
+    if r.returncode != 0 or not os.path.isfile(out):
         print(r.stdout[-2000:], r.stderr[-2000:])
-        sys.exit("prediction failed")
+        sys.exit("prediction failed (exit code {})".format(r.returncode))
     got = sha256(out)
     v = subprocess.run([a.python, os.path.join(ROOT, "evaluation", "validate_submission.py"), out],
                        cwd=ROOT, capture_output=True, text=True)

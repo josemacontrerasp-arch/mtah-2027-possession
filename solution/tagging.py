@@ -1,4 +1,7 @@
-"""Smart Tagging (Metrica's automatic tactical tagging) as possession evidence.
+"""NOT PART OF THE SUBMISSION CHAIN -- tried and dropped (Smart Tagging evidence). Kept for transparency; solution/predict.py never
+imports it.
+
+Smart Tagging (Metrica's automatic tactical tagging) as possession evidence.
 
 Each tagged phase says something about who has the ball:
 * attacking phases (BUILD UP, PROGRESSION, CREATING CHANCES, ATTACKING TRANSITION, BALL IN FINAL

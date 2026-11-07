@@ -1,4 +1,7 @@
-"""Second stage: re-estimate each frame from the first stage's probabilities in context.
+"""NOT PART OF THE SUBMISSION CHAIN -- tried and dropped (second-stage stacking). Kept for transparency; solution/predict.py never
+imports it.
+
+Second stage: re-estimate each frame from the first stage's probabilities in context.
 
 The first stage sees +/- 8 s of hand-built context. Possessions last ~10 s on average and their
 edges are where the score is decided, so the second stage looks at windowed summaries of the

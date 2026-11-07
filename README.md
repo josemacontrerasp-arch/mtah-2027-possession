@@ -4,7 +4,7 @@
 >
 > This fork adds our solution in [`solution/`](solution/). The technical document is
 > [`solution/README.md`](solution/README.md). To regenerate the submitted file exactly
-> (CPU only, ~7 minutes, match bundle unpacked into `data/` as described in DATA.md):
+> (CPU only, ~2 minutes, match bundle unpacked into `data/` as described in DATA.md):
 >
 > ```bash
 > uv venv .venv --python 3.12
@@ -13,8 +13,10 @@
 > .venv/bin/python evaluation/validate_submission.py submissions/<team_name>.csv
 > ```
 >
-> Everything learned or tuned was fitted on external games only (DFL open data, CC BY 4.0); the
-> trained models are committed in `solution/models/`. No match data is in this repository.
+> Nothing is trained, tuned or fitted on the provided match: models are trained on external games
+> (DFL open data, CC BY 4.0) under randomised simulated trackers, and selection rules were
+> pre-registered (`solution/PREREGISTRATION.md`). Trained models are committed in `solution/models/`.
+> No match data is in this repository.
 > Our code is released under the same MIT licence as the starter code ([LICENSE](LICENSE)).
 
 ---

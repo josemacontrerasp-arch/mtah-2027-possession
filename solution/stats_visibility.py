@@ -1,4 +1,7 @@
-"""Aggregate statistics of ball / player visibility in a Match. Prints quantiles and rates only.
+"""NOT PART OF THE SUBMISSION CHAIN -- development diagnostic (aggregate visibility statistics; history of the v4 calibration). Kept for transparency; solution/predict.py never
+imports it.
+
+Aggregate statistics of ball / player visibility in a Match. Prints quantiles and rates only.
 
 Used to fit the degradation applied to external games so that they look like automatic tracking.
 It reads tracking only -- no labels -- and is unsupervised with respect to possession.

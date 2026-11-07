@@ -18,8 +18,30 @@ import copy
 
 import numpy as np
 
-from solution.degrade import AERIAL_Z, _smooth_noise, _exp_mask
 from solution.match import Match, D
+
+AERIAL_Z = 3.0      # m: a ball this high is in flight (physics, not fitted)
+
+
+def _smooth_noise(rng, shape, sigma, tau):
+    """Stationary AR(1) noise along axis 0: std `sigma`, correlation time `tau` frames."""
+    from scipy.signal import lfilter
+    a = float(np.exp(-1.0 / tau))
+    eps = rng.normal(0, 1, size=shape)
+    eps[0] *= 1.0 / np.sqrt(1 - a * a)
+    return (lfilter([sigma * np.sqrt(1 - a * a)], [1.0, -a], eps, axis=0)).astype(np.float32)
+
+
+def _exp_mask(rng, n, mean_on, mean_off):
+    mask = np.zeros(n, bool)
+    t, state = 0, rng.random() < mean_on / (mean_on + mean_off)
+    while t < n:
+        run = max(1, int(rng.exponential(mean_on if state else mean_off)))
+        if state:
+            mask[t:t + run] = True
+        t += run
+        state = not state
+    return mask
 
 # Broad priors (lo, hi). "log" entries are sampled log-uniformly.
 PRIORS = dict(

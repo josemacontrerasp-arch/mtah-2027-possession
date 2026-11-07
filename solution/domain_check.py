@@ -1,4 +1,7 @@
-"""Unsupervised domain-gap diagnostic: can a classifier tell degraded external frames from
+"""NOT PART OF THE SUBMISSION CHAIN -- development diagnostic (domain-gap check used during v4). Kept for transparency; solution/predict.py never
+imports it.
+
+Unsupervised domain-gap diagnostic: can a classifier tell degraded external frames from
 provided-match frames? Features that make this easy will not transfer, whatever their CV score.
 
 No labels of the provided match are involved. Prints AUCs, feature names and quantiles only.

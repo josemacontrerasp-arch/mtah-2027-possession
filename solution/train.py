@@ -28,7 +28,7 @@ from solution.relabel import controlled  # noqa: E402
 
 MODEL_DIR = os.path.join(HERE, "models")
 EXCLUDE = {"b_speed_prov", "half_t"}   # provider-specific / clock features: do not transfer
-TRAIN_SEEDS = tuple(int(x) for x in os.environ.get("MTAH_SEEDS", "11,12").split(","))
+TRAIN_SEEDS = tuple(int(x) for x in os.environ.get("MTAH_SEEDS", "11,12,13,14").split(","))
 EVAL_SEED = 101
 TRAIN_STEP = 5
 FEAT_VERSION = 5
@@ -50,7 +50,7 @@ OOF_SUB = os.environ.get("MTAH_OOF", "oof")
 STRESS = os.environ.get("MTAH_STRESS", "0") == "1"   # also score on the stress profile
 # Training degradation: "calibrated" (solution/degrade.py, matched to unlabelled statistics of the
 # provided tracking) or "random" (solution/degrade_random.py, first-principles priors only).
-DEGRADE = os.environ.get("MTAH_DEGRADE", "calibrated")
+DEGRADE = os.environ.get("MTAH_DEGRADE", "random")   # v6 default; "calibrated" = v4 history
 # Extra evaluation conditions written next to the standard OOF: "rnd" = a fresh randomised tracker.
 EXTRA_EVALS = [e for e in os.environ.get("MTAH_EVALS", "").split(",") if e]
 
@@ -184,9 +184,10 @@ def cmd_final(args):
     rows = train_rows(MATCH_IDS)
     cols = feature_columns(rows)
     model = fit(rows, cols)
-    path = os.path.join(MODEL_DIR, "frame_lgbm.txt")
+    name = os.environ.get("MTAH_MODEL_NAME", "frame_lgbm_v6")
+    path = os.path.join(MODEL_DIR, name + ".txt")
     model.save_model(path)
-    with open(os.path.join(MODEL_DIR, "frame_lgbm_features.json"), "w") as fh:
+    with open(os.path.join(MODEL_DIR, name + "_features.json"), "w") as fh:
         json.dump(cols, fh, indent=1)
     print("saved", path, "features", len(cols), "rows", len(rows))
 

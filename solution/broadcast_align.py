@@ -1,4 +1,7 @@
-"""Align the broadcast recording to the tactical timeline, from tracking alone.
+"""NOT PART OF THE SUBMISSION CHAIN -- tried and dropped (broadcast alignment). Kept for transparency; solution/predict.py never
+imports it.
+
+Align the broadcast recording to the tactical timeline, from tracking alone.
 
 No mapping table is provided, so we estimate one. Both recordings track the same players and ball
 in the same normalised pitch coordinates, so at the right time offset their positions agree.

@@ -1,0 +1,12 @@
+Team solution (solution/) — More than a Hack 2027, Phase 1
+Copyright (c) 2026 the team. Released under the MIT licence (see LICENSE), like the starter code
+it builds on (Copyright Metrica Sports).
+
+The trained models in solution/models/ were trained on the DFL open dataset:
+  Bassek, M., Rein, R., Weber, H., Memmert, D. (2025). An integrated dataset of spatiotemporal
+  and event data in elite soccer. Scientific Data 12, 195. doi:10.6084/m9.figshare.28196177
+  Licence: Creative Commons Attribution 4.0 International (CC BY 4.0),
+  https://creativecommons.org/licenses/by/4.0/ — the data was converted (relabelled to controlled
+  possession and degraded by simulated trackers) before training; no DFL data is redistributed.
+
+No match data of the competition is contained in this repository.

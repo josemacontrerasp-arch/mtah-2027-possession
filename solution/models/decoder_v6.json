@@ -1,0 +1,18 @@
+{
+ "params": {
+  "switch_cost": 4,
+  "to_dead_cost": 16,
+  "from_dead_cost": 48,
+  "min_turnover_s": 2.5,
+  "dead_bias": 0.5
+ },
+ "ensemble": "w0.3",
+ "nested_clean_spellF1": 0.7735896121100991,
+ "insample_clean_spellF1": 0.7740492063366082,
+ "environments": [
+  "w0.3=oofc_v6_ens0.3_rnd,oofc_v6_ens0.3_rnd2,oofc_v6_ens0.3_rndh",
+  "w0.5=oofc_v6_ens0.5_rnd,oofc_v6_ens0.5_rnd2,oofc_v6_ens0.5_rndh",
+  "w0.7=oofc_v6_ens0.7_rnd,oofc_v6_ens0.7_rnd2,oofc_v6_ens0.7_rndh"
+ ],
+ "selection": "solution/clean_select.py (pre-registered)"
+}

@@ -1,4 +1,7 @@
-"""Where does the decoded output lose spellF1 on held-out EXTERNAL games? (DFL only.)
+"""NOT PART OF THE SUBMISSION CHAIN -- development diagnostic (external games only). Kept for transparency; solution/predict.py never
+imports it.
+
+Where does the decoded output lose spellF1 on held-out EXTERNAL games? (DFL only.)
 
     python -m solution.diagnose [stage]
 
@@ -28,7 +31,7 @@ def segs(codes, runs):
 
 def main(stage=1):
     data = load_oof(stage)
-    name = "decoder.json" if stage == 1 else "decoder_stack.json"
+    name = os.environ.get("MTAH_DECODER", "decoder_v6.json")
     params = json.load(open(os.path.join(MODEL_DIR, name)))["params"]
     per_iou = {t: [] for t in pm.SPELL_IOUS}
     start_err, end_err = [], []

@@ -55,13 +55,22 @@ def _job(kw):
     return out, npred / max(1, ngt)
 
 
-def run(subs, grid, workers=16):
+def run(subs, grid, workers=16, cands=None):
+    """cands: optional list of (label, [sub_rnd, sub_rnd2, sub_rndh]) candidate ensembles; the
+    candidate becomes one more dimension of the nested choice."""
     keys = list(grid)
     combos = [dict(zip(keys, v)) for v in itertools.product(*(grid[k] for k in keys))]
-    with ProcessPoolExecutor(workers, initializer=_init, initargs=(subs,)) as ex:
-        res = list(ex.map(_job, combos, chunksize=2))
-    table = np.stack([r[0] for r in res])            # (C, E, M)
-    ratio = np.array([r[1] for r in res])
+    cands = cands or [("main", subs)]
+    tables, ratios, labels = [], [], []
+    for label, csubs in cands:
+        with ProcessPoolExecutor(workers, initializer=_init, initargs=(csubs,)) as ex:
+            res = list(ex.map(_job, combos, chunksize=2))
+        tables.append(np.stack([r[0] for r in res]))
+        ratios.append(np.array([r[1] for r in res]))
+        labels += [label] * len(combos)
+    table = np.concatenate(tables)                    # (cands*C, E, M)
+    ratio = np.concatenate(ratios)
+    combos = [dict(c, ensemble=l) for l, c in zip(labels, combos * len(cands))]
     per_match = table.mean(axis=1)                    # (C, M), averaged over environments
     nested, chosen = [], []
     for i in range(len(MATCH_IDS)):
@@ -77,12 +86,15 @@ def run(subs, grid, workers=16):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
-    ap.add_argument("subs", nargs=3)
+    ap.add_argument("subs", nargs="*", help="three OOF dirs (rnd rnd2 rndh) for one ensemble")
+    ap.add_argument("--cand", action="append", default=[],
+                    help="label=sub_rnd,sub_rnd2,sub_rndh ; repeat for several candidates")
     ap.add_argument("--grid", default=None)
     ap.add_argument("--save", default=None, help="write the in-sample best setting to models/")
     a = ap.parse_args()
     grid = json.loads(a.grid) if a.grid else GRID
-    r = run(a.subs, grid)
+    cands = [(c.split("=")[0], c.split("=")[1].split(",")) for c in a.cand] or None
+    r = run(a.subs, grid, cands=cands)
     best = r["combos"][r["insample"]]
     pm = r["table"][r["insample"]]
     print("[{}] {} settings x 3 clean environments x 7 matches".format(a.name, len(r["combos"])))
@@ -92,14 +104,16 @@ def main():
           "{:.2f}: {}".format(pm.mean(), *pm.mean(axis=1), r["ratio"][r["insample"]], best))
     print("  settings chosen per fold:", [r["combos"][c] == best for c in r["chosen"]].count(True),
           "of 7 folds pick the in-sample best")
-    np.savez_compressed(os.path.join(os.path.dirname(HERE), "..", "external", "dfl", "cache",
-                                     "select_{}.npz".format(a.name)),
+    from solution.external_dfl import CACHE_DIR
+    np.savez_compressed(os.path.join(CACHE_DIR, "select_{}.npz".format(a.name)),
                         table=r["table"], nested=r["nested"], ratio=r["ratio"])
     if a.save:
         with open(os.path.join(MODEL_DIR, a.save), "w") as fh:
-            json.dump({"params": best, "nested_clean_spellF1": float(r["nested"].mean()),
+            json.dump({"params": {k: v for k, v in best.items() if k != "ensemble"},
+                       "ensemble": best.get("ensemble"),
+                       "nested_clean_spellF1": float(r["nested"].mean()),
                        "insample_clean_spellF1": float(pm.mean()),
-                       "environments": a.subs,
+                       "environments": a.subs or a.cand,
                        "selection": "solution/clean_select.py (pre-registered)"}, fh, indent=1)
         print("  saved", a.save)
 

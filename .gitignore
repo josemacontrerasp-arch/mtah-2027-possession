@@ -66,3 +66,7 @@ env/
 # -- team solution ----------------------------------------------------------------------------
 # Per-frame outputs stay local; the repo regenerates them (python -m solution.predict).
 submissions/
+# per-frame arrays and tables never belong in this repository
+*.npy
+*.npz
+*.parquet

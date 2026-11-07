@@ -118,3 +118,63 @@ def rederive():
 if __name__ == "__main__" and len(__import__("sys").argv) > 1 and \
         __import__("sys").argv[1] == "rederive":
     rederive()
+
+
+def rederive_all(rounds=3):
+    """Every detector threshold chosen on external kick-offs, by coordinate search.
+
+    Cases: each after-goal kick-off of the DFL games under two randomised trackers, with the
+    detector's window opening at three published geometries -- at the kick (1st-half case,
+    relying on the look-back), one minute before, and two minutes before (2nd-half case).
+    Objective: most found, then smallest median absolute error, then smallest mean.
+    """
+    import solution.kickoff as K
+    cases = []
+    for i, mid in enumerate(MATCH_IDS):
+        clean = load_ext(mid)
+        kicks = centre_restarts(clean)
+        for draw in (0, 1):
+            deg = degrade_random(clean, seed=7000 + 100 * draw + i)
+            for r in kicks:
+                for before in (0, 25 * 60, 25 * 120):
+                    cases.append((deg, r, before))
+    grid = dict(SIDE_SHARE=[0.75, 0.8, 0.85, 0.9], TOL=[0.5, 1.0, 1.5, 2.0],
+                MIN_RUN=[12, 25, 50, 100], MERGE_GAP=[25, 50, 125, 250],
+                SPEED_RISE=[0.1, 0.2, 0.3, 0.5], PLAY_SPEED=[1.0, 1.2, 1.5, 2.0],
+                MIN_PER_TEAM=[6, 7, 8], REFINE=[0, 12, 25, 50], KICK_SPEED=[2.0, 3.0, 4.0],
+                SPEED_WIN=[25, 50, 100], SEARCH_BEFORE=[125, 250, 500])
+
+    def score():
+        errs = []
+        for deg, r, before in cases:
+            k_, _ = K.detect(deg, max(0, r - before), min(deg.n, r + WINDOW_AFTER))
+            if k_ is not None:
+                errs.append(abs(k_ - r))
+        e = np.array(errs) if errs else np.array([1e9])
+        return (len(errs), -float(np.median(e)), -float(np.mean(e)))
+
+    start = {k: getattr(K, k) for k in grid}
+    best_val = score()
+    print("cases {} ; start {} -> found {} median {:.0f} mean {:.1f}".format(
+        len(cases), start, best_val[0], -best_val[1], -best_val[2]))
+    for rnd in range(rounds):
+        changed = False
+        for k, vals in grid.items():
+            keep = getattr(K, k)
+            for v in vals:
+                setattr(K, k, v)
+                sc = score()
+                if sc > best_val:
+                    best_val, keep, changed = sc, v, True
+            setattr(K, k, keep)
+        print("round {}: found {} median {:.0f} mean {:.1f}".format(
+            rnd + 1, best_val[0], -best_val[1], -best_val[2]))
+        if not changed:
+            break
+    final = {k: getattr(K, k) for k in grid}
+    print("chosen:", final)
+    return final
+
+
+if __name__ == "__main__" and len(__import__("sys").argv) > 1 and         __import__("sys").argv[1] == "rederive_all":
+    rederive_all()

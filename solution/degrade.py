@@ -1,4 +1,7 @@
-"""Make clean external tracking look like the provided automatic tracking.
+"""NOT PART OF THE SUBMISSION CHAIN -- v4 history: the calibrated simulator, replaced in v6 by degrade_random.py. Kept for transparency; solution/predict.py never
+imports it.
+
+Make clean external tracking look like the provided automatic tracking.
 
 External games (DFL) have the ball on every frame and all 22 players on every frame. The provided
 ATD does not: the ball is missing on ~41% of graded frames, in long blocks, and ~1.5 players are

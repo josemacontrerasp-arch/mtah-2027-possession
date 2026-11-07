@@ -24,13 +24,15 @@ ROOT = os.path.dirname(HERE)
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from solution.external_dfl import CACHE_DIR, MATCH_IDS  # noqa: E402
 from solution.match import X  # noqa: E402
-from solution.train import (EXCLUDE, TRAIN_SEEDS, TRAIN_STEP, eval_arrays,  # noqa: E402
-                            variant_table)
+
+# Prediction (load_final / predict_full) must not import the training stack -- in particular
+# not the calibrated simulator in solution/degrade.py -- so training-only imports live inside the
+# training functions below. These two constants mirror solution/train.py (checked in cmd_cv).
+EXCLUDE = {"b_speed_prov", "half_t"}
+STEP = 5                   # 5 Hz, = train.TRAIN_STEP
 
 MODEL_DIR = os.path.join(HERE, "models")
-STEP = TRAIN_STEP          # 5 Hz
 WIN = 600                  # steps per training window (120 s)
 HIDDEN = int(os.environ.get("SEQ_HIDDEN", 128))
 LAYERS = 2
@@ -95,6 +97,7 @@ def _sequences(df):
 
 
 def _train_tables(mids):
+    from solution.train import TRAIN_SEEDS, variant_table
     seqs = []
     for mid in mids:
         for swapped in (False, True):
@@ -205,6 +208,9 @@ def feature_cols(df):
 
 
 def cmd_cv():
+    from solution.external_dfl import CACHE_DIR, MATCH_IDS
+    from solution.train import EXCLUDE as TRAIN_EXCLUDE, TRAIN_STEP, eval_arrays
+    assert TRAIN_EXCLUDE == EXCLUDE and TRAIN_STEP == STEP
     out_dir = os.path.join(CACHE_DIR, OOF_DIR)
     os.makedirs(out_dir, exist_ok=True)
     all_seqs = {mid: _train_tables([mid]) for mid in MATCH_IDS}
@@ -237,6 +243,7 @@ def cmd_cv():
 
 
 def cmd_final():
+    from solution.external_dfl import MATCH_IDS
     torch = _torch()
     seqs = _train_tables(MATCH_IDS)
     cols = feature_cols(seqs[0])

@@ -1,212 +1,208 @@
 # Frame-level possession from automatic tracking — technical document
 
-*More than a Hack 2027, Phase 1. Final version of 5 November 2026.*
+*More than a Hack 2027, Phase 1. Version v6 ("clean room"), 7 November 2026.*
 
 ## 1. Approach
 
 Possession is predicted in two steps.
 
-1. **Per-frame probabilities** of *home in possession*, *away in possession* or *dead ball* come
-   from an ensemble of three models fed the same collective tracking features: a LightGBM
-   classifier (weight 0.5) and two bidirectional GRUs that read two-minute stretches at 5 Hz
-   (weights 0.35 and 0.15; one sees only raw per-frame features and learns its own temporal
-   context, the other also sees hand-built context windows).
-2. **A constrained HMM** decoded with Viterbi turns probabilities into possessions. Three states
+1. **Per-frame probabilities** of *home in possession*, *away in possession* or *dead ball* from an
+   ensemble fed the same collective tracking features: a LightGBM classifier (weight 0.3) and
+   four bidirectional GRUs at 5 Hz, trained on two-minute stretches and reading each half whole
+   at prediction (0.7 in total: two seeds of a
+   GRU on raw per-frame features, 0.245 each, and two seeds of a GRU that also sees hand-built
+   context windows, 0.105 each).
+2. **A constrained HMM** decoded with Viterbi turns probabilities into possessions: three states
    (H, A, D) with switching costs, plus the definitional constraint that a possession *won from
-   the opponent* lasts at least 2.5 s (a restart possession can be any length). Its settings
-   are those with the best average over a standard and a deliberately harsher external benchmark.
+   the opponent* lasts at least 2.5 s (a restart possession may be any length).
 
-**Everything that is learned or tuned is fitted on external games only** — seven Bundesliga
-matches of the DFL open dataset, degraded so they look like the provided automatic tracking. The
-provided match is used only as input. Model choice, ensemble weights and decoder parameters were
-all selected by leave-one-match-out cross-validation on those external games.
+**Nothing in the pipeline is trained, tuned, calibrated or fitted on the provided match.** Every
+model is trained on seven Bundesliga games of the DFL open dataset. Because those games come from
+clean league tracking, they are degraded by randomly drawn simulated automatic trackers (domain
+randomisation) from broad first-principles priors — no value is taken from the provided match. Ensemble weighting and decoder settings were chosen by nested
+leave-one-match-out on *clean* simulated environments, under rules written and committed before
+the results existed (`PREREGISTRATION.md`; every decision in `selection_log.md`).
 
-Why this design: the ranking metric scores whole possessions (spellF1), so the output has to be
-temporally coherent; the hard cases are open-play turnovers and the long stretches where the
-tracker has lost the ball, which need context of tens of seconds; and the provided ground truth
-may not be used for training or tuning, so the only honest way to fit anything is on other games.
+Why this design: the ranking metric scores whole possessions, so the output must be temporally
+coherent; the hard cases (open-play turnovers, long stretches without a tracked ball) need tens
+of seconds of context; and since we may not learn from the provided match, the model must work
+on *any* plausible automatic tracker rather than on one simulation of it.
 
 ## 2. Assets used and dropped
 
 | asset | status | how |
 |---|---|---|
-| tactical ATD | **used** | all features; own loader (`solution/atd.py`), slot order from the EPTS DataFormatSpecification |
-| broadcast ATD + homography | used for alignment, then **dropped** from the submission | aligned to the tactical timeline from tracking alone (one offset per half, 4014 / 26920 frames, median ball disagreement 0.8 m). Filling tactical ball gaps raised coverage 59.3% → 63.1% but shifts the input away from what the models were calibrated on; the "broadcast cut away" stoppage signal was informative (self-supervised likelihood ratio 5.4) but at a weighting we could defend it changed 0.01% of frames |
-| Smart Tagging | parsed, **dropped** | team hints agree with the models' confident frames (LR ≈ 4–13), but conservative fusion changed 0.04% of frames and stronger fusion cannot be validated without labels |
-| tactical homography | **dropped** | the camera frames the team block (centre ≈ players' mean x, 3 m), not the ball (12 m) |
+| tactical ATD | **used** | all features; own loader (`atd.py`), slot order from the EPTS DataFormatSpecification |
+| broadcast ATD + homography | tried, **dropped** | aligned to the tactical timeline from tracking alone (one offset per half); its ball fills and "cut-away to replay" stoppage signal were informative but could not be weighted without labels |
+| Smart Tagging | tried, **dropped** | team hints agree with confident model frames, but cannot be weighted without labels |
+| tactical homography | tried, **dropped** | the camera frames the team block, not the ball |
 | videos | not used | |
-| public 5-minute ground truth | **pipeline check only** | run once per frozen version to check alignment and format; never used to train, tune or choose |
+| public 5-minute ground truth | **pipeline check only** | one check of the final version; it decided nothing |
 
 ## 3. Training data
 
-| dataset | licence | labels | who labelled | how much |
+| dataset | licence | labels | labelled by | amount |
 |---|---|---|---|---|
 | DFL open dataset — Bassek, Rein, Weber, Memmert (2025), *Scientific Data* 12:195, doi:10.6084/m9.figshare.28196177 | CC BY 4.0 | per-frame `BallStatus` (alive/dead) and `BallPossession` (home/away) | the league's official data provider (DFL / Sportec Solutions) | 7 matches, 1.0 M frames at 25 Hz |
 
-No data about the provided game other than the provided assets was used. Downloaded but not used:
-Metrica Sports sample data, SkillCorner open data (MIT).
+No other labelled data and no human-produced data about the provided game.
 
-### Making external games look like the provided automatic tracking (`solution/degrade.py`)
+### Domain randomisation (`degrade_random.py`)
 
-| property of the provided ATD (graded frames, measured without labels) | degraded DFL |
-|---|---|
-| ball visible 59.3%, in long blocks (median missing run 268 frames) | 57%, same run-length shapes |
-| P(ball visible) falls from 0.83 to 0.12 as the share of players standing still rises | reproduced, mean abs. error 0.043 over 8 bins |
-| relative ball–nearest-player speed p10/p50/p90: 0.6 / 3.7 / 12.9 m/s | 0.9 / 3.2 / 13.1 m/s |
-| players tracked per team p10/p50/p90: 9 / 11 / 11 | 9 / 11 / 11 |
+Four simulated trackers are drawn per training run (seeds 11–14), and each is applied to every
+external game in both orientations (home and away swapped) — 56 degraded copies. The trackers come
+from broad priors chosen from first principles, ranging from a tracker that almost never loses the
+ball to one that loses it most of the time:
 
-Ingredients: live-play ball visibility from a renewal process with the ATD's run-length
-distributions; during stoppages the ball is hidden except, before 80% of restarts, a placed ball
-for 2–10 s; loss and re-acquisition jittered around the stoppage (−1 s / +2 s); whole aerial
-episodes (z > 3 m) dropped with probability 0.35; low-pass position noise; light per-player and
-bursty group player drop-outs. DFL freezes the ball during every stoppage (100% of dead frames,
-< 1% of live frames) — an artefact a real tracker never shows — so the frozen ball is removed.
-These parameters match **unlabelled input statistics** of the provided tracking; no ground truth
-and no video are involved. Each degraded game is also used with home and away swapped.
+* ball visibility in live play: alternating visible / missing runs, log-normal, medians 80–1000
+  and 20–500 frames;
+* stoppages: the ball hidden with probability 0.2–1.0, a placed ball before restarts, loss
+  0–3 s early and 0–4 s late around the stoppage, 0–3 s re-acquisition after the restart;
+  DFL's frozen ball during stoppages (an artefact: 100% of dead frames) replaced by a carried
+  path to the restart spot;
+* lofted balls (z > 3 m) dropped with probability 0–0.8;
+* players: 1–12% missing each, bursty group losses, smooth position noise 0.05–0.45 m, speed noise.
 
-Sanity check of the simulated setting: the official baseline algorithm scores spellF1 0.32 /
-macroF1 0.74 on degraded DFL, against 0.24 / 0.67 published for it on the provided match (under
-naive random drop-out it scored 0.19 / 0.45).
+The statistics the organisers publish in DATA.md (ball visible on 57–59% of frames, 20.5
+tracked objects) fall inside these ranges; they were used for orientation only.
+
+**Why not calibrate the simulator to the provided tracking (our v4)?** Matching aggregate,
+unlabelled statistics of the provided ATD is arguably compatible with "use the tracking as input",
+but the 3-Nov email says parameters "MUST" be tuned on external data. It also made the model
+fragile: the calibrated model fell from 0.79 to 0.65 spellF1 on a simulated tracker it had not
+been calibrated to, while the randomised one held 0.75 (§6).
 
 ## 4. Possession rules implemented
 
-* **Controlled possession.** The challenge: a change of possession needs the opponent to gain
-  *controlled* possession; touches, deflections and aerial duels without control do not count,
-  and a contested or loose ball stays with the last team in possession. External labels flip on
-  every touch (DFL spells: median 3.7 s, 30% under 2 s). We convert them (`solution/relabel.py`):
-  a spell that interrupts the other team's possession and lasts under **2 s** ("a player keeps
-  the ball for a few seconds") reverts to that team. The constant comes from the text.
-* **Restarts.** After a stoppage there is always a clear possessor: spells that start from a dead
-  ball are never relabelled, and the decoder imposes no minimum length on them.
-* **Minimum turnover length.** In the decoder, a possession won from the opponent must last at
-  least 2.5 s (chosen by cross-validation among 0–5 s).
-* **Dead ball** is its own state. Frames of a half's play window before its kick-off are `D`
-  (the second half's graded window opens about two minutes before the kick). The kick-off is
-  **detected from the tracking** (`solution/kickoff.py`): the one moment of a half when both teams
-  stand entirely in their own halves, taking the formation that breaks into play (mean player
-  speed rising). The same formation gives each team's attacking direction. No frame number of the
-  match is written in the code. The detector's thresholds are generic physical values, and it is
-  **validated on external games** (`solution/kickoff_check.py`): on all 17 kick-offs after goals
-  in the seven DFL matches, on randomly degraded tracking, it finds 16, with a median error of
-  4 frames (0.16 s), 94% within one second and the attacking direction right every time. On the
-  provided match it lands 2 and 14 frames from the kick-offs quoted in the documentation.
-* No `X` on graded frames: abstaining costs macroF1 and gains nothing under spellF1.
+* **Controlled possession.** A change of possession needs the opponent to gain *controlled*
+  possession; touches, deflections and aerial duels without control do not count, and a contested
+  or loose ball stays with the last team. External labels flip on every touch (DFL spells: median
+  3.7 s, 30% under 2 s), so before training they are converted (`relabel.py`): a spell that
+  interrupts the other team's possession and lasts under **2 s** ("a player keeps the ball for a
+  few seconds") reverts to that team; spells starting from a restart are kept. The constant comes
+  from the definition text.
+* **Restarts** always have a clear possessor: no minimum length after a stoppage.
+* **Minimum turnover length 2.5 s** in the decoder (chosen on clean environments; shorter
+  minima, a minimum stoppage length and turnovers ending in a stoppage were tested and rejected
+  by the pre-registered rule).
+* **Dead ball** is its own state. Frames of a half's play window before its kick-off are `D`.
+  Kick-offs are **detected from the tracking** (`kickoff.py`): the formation of both teams fully
+  in their own halves that breaks into play. **All eleven of its constants were chosen on external
+  kick-offs** by coordinate search (`kickoff_check.py rederive_all`): the 17 kick-offs after goals
+  in the DFL games, under two randomised trackers each, with the search window opening at the
+  kick, one minute before and two minutes before (the layouts of the published grading windows) —
+  102 of 102 found, median error 8 frames. The plain check (`kickoff_check.py`) finds 17/17 with
+  the attacking direction right every time. The same formation gives each team's attacking
+  direction. No frame number of the provided match appears in the pipeline.
+* No `X` on graded frames.
 
-## 5. Features (`solution/features.py`)
+## 5. Features (`features.py`)
 
-All collective and orientation-normalised (home attacks +x); nothing is keyed to a track slot,
-because slots are not people. Per frame: ball position, speed and distance to the boundary;
-nearest home and away player distances, counts within 3 m / 10 m, relative ball–player speed;
-team speeds, share running / standing, centroids, spreads, extreme positions, share goal-side
-of the ball, centroid velocities; ball-control evidence at 1.0 / 1.5 / 2.5 m with the last and
-next controlling team and time since/until; ball visibility history; the ball's path
-interpolated across gaps of up to 15 s and which team lines it; the pass receiver (first player
-ahead of a moving ball inside a cone); which team reaches the ball's position 0.6 s ahead first;
-and past / future / centred windows of 1–8 s over the key signals. 184 features.
+Collective and orientation-normalised (home attacks +x); nothing keyed to a track slot. Per
+frame: ball position, speed, distance to the boundary; nearest home / away player distances,
+counts within 3 m and 10 m, relative ball–player speed; team speeds, shares running / standing,
+centroids, spreads, extremes, share goal-side of the ball, centroid velocities; ball-control
+evidence at 1.0 / 1.5 / 2.5 m with last / next controlling team and time since / until; ball
+visibility history; the ball's path interpolated across gaps up to 15 s and which team lines it;
+pass receiver (first player ahead of a moving ball inside a cone); which team reaches the ball's
+position 0.6 s ahead first; past / future / centred windows of 1–8 s. 184 features.
 
-## 6. Results on external data (leave-one-match-out, 7 folds)
+## 6. Results (external games, leave-one-match-out)
 
-| | spellF1 | macroF1 |
-|---|---|---|
-| official baseline algorithm, same degraded games | 0.322 | 0.741 |
-| LightGBM, argmax per frame | ~0.43 | 0.94 |
-| LightGBM + HMM | 0.791 | 0.937 |
-| + minimum turnover length | (included above) | |
-| GRU alone (raw features) | 0.796 | 0.936 |
-| ensemble LightGBM + 2 GRUs + constrained HMM | 0.809 | 0.942 |
-| **submission: LightGBM + 2 GRUs × 2 seeds + constrained HMM, robust decoder** | **0.813** | **0.943** |
-| same, on the stress benchmark (harsher simulated tracker, §8) | 0.794 | 0.931 |
-| same, decoder tuned on 6 matches and scored on the 7th (nested) | ≈ 0.807 | |
+**Clean environments** (simulated trackers with no value from the provided match, never used in
+training: two independent draws from the priors and their harsher half), decoder and ensemble
+weighting chosen on six matches and scored on the seventh:
 
-Per match 0.79–0.85. Dropped after cross-validation: second-stage stacking (0.765 vs 0.781);
-adding an older-feature model to the ensemble (no gain); a larger LightGBM with twice the
-degraded copies and 800 rounds (0.789 vs 0.791 alone, +0.001 in the ensemble — noise).
+| pipeline | `rnd` | `rnd2` | `rndh` (harsh) | **nested** |
+|---|---|---|---|---|
+| official baseline algorithm (for scale, same games) | | | | ≈ 0.32\* |
+| v4 — calibrated to provided-ATD statistics | 0.709 | 0.745 | 0.589 | 0.679 |
+| **v6 — clean room (submitted)** | **0.776** | **0.783** | **0.763** | **0.774** |
 
-**Pipeline check of the frozen submission** (public 5-minute window; official scorer, run once):
-spellF1 0.607, macroF1 0.722 (every baseline lower), team accuracy 0.95 where both agree the ball
-is alive, alive/dead F1 0.91, frames aligned. Bootstrap 5–95% interval 0.41–0.79; the scorer itself reports that gaps below ~0.37 are
-within noise on 17 possessions, so this window cannot rank versions and was not used to.
+v6 is better on all seven held-out matches. \*on the earlier calibrated benchmark.
 
-**Reproducibility:** `python -m solution.predict` regenerates the submission byte for byte —
-checked in our development environment and in a freshly created CPU-only environment installed
-from `requirements-solution.txt`, with every cache deleted and rebuilt from the raw match files
-(SHA-256 `628a46283946051c7939c91bc227fbb8e7a370c7bd0cdaac2a44fd77cfeafa55`). Probabilities are
-rounded to 4 decimals before decoding and the GRUs run on CPU, so floating-point noise across
-machines cannot change the file. LightGBM retraining is bit-for-bit deterministic too (re-running
-the cross-validation reproduced identical out-of-fold files); GRU retraining on a GPU is not
-bit-exact, which is why the trained weights are committed.
+The split between the two GRU kinds (70:30) was re-checked on the clean environments against
+50:50 and 90:10: differences ≤ 0.001 in-sample and a lower nested score with the extra choice, so
+it was kept.
 
-Where it still loses (diagnostics on held-out games): true possessions under 3 s are recovered
-(IoU ≥ 0.5) 53% of the time against 93–97% for possessions over 12 s, and possessions between
-two opponent possessions (open-play turnovers) 71% against 90% between two stoppages.
+Tested and **not adopted** (rule: ≥ +0.005 nested): shorter or longer turnover minima, a minimum
+stoppage length, turnovers ending in a stoppage (nested 0.771); time-varying switch costs from
+posterior jumps (0.773); second-stage stacking; a larger LightGBM; extra ensemble members.
 
-**These are external-data numbers.** The provided match differs (automatic tracking in reality
-rather than in simulation; a ground truth from a different provider's definition), so the score
-on it will be lower; how much lower is unknowable without its labels.
+Where it still loses (external diagnostics): short possessions after turnovers, and the exact
+timing of turnovers (±1 s).
 
-## 7. Limitations and what we would do with more time
+**Pipeline check** of the final file on the public 5-minute window (the only time v6 was scored
+there; it decided nothing): spellF1 0.676, macroF1 0.906, alive/dead F1 0.972, team accuracy 0.95
+where both agree the ball is alive; frames aligned. Seventeen possessions cannot rank versions.
 
-* The simulated degradation ties ball loss to stoppages more cleanly than a real tracker does,
-  so dead-ball detection on the provided match is likely the weakest part: externally the
-  onset error is a 0.12 s median, on real automatic tracking it will be worse, and a missed
-  stoppage merges the possessions either side of it. Match-only stoppage evidence (the broadcast
-  cutting away, LR 5.4) exists but could not be weighted without labels.
+## 7. Limitations
+
 * The possession definition is converted with one constant (2 s); the provided ground truth's
-  exact notion of control may differ.
-* Short possessions after turnovers are the main loss; better pass/receiver modelling or a
-  learned ball-trajectory model would target them.
-* More external games — especially automatic tracking from another provider — would make the
-  simulation less important.
+  notion of control (Metrica's corrected-tracking ownership) may differ.
+* Turnover timing and very short possessions are the main remaining loss.
+* The randomised priors are wide by design; a tracker outside them (for example systematic
+  position offsets) is not covered.
+* With more time: more external games, ideally automatic tracking with possession labels from a
+  second provider; a boundary-event model for turnovers.
 
 ## 8. Rules compliance
 
-* No hand labels, no manual corrections, no human-produced data about the provided game.
-* Training and tuning on external games only; the public 5-minute window is a pipeline check.
-* No frame numbers or other constants tied to specific moments of the provided game: kick-offs and
-  attacking directions are detected; the half windows are the organisers' grading windows
-  (`games.py`), used as published.
-* **AI assistance, and what it never saw.** We used an AI coding assistant to write and review
-  code. The provided data was never uploaded to it or to any other AI service: all processing ran
-  locally, and only aggregate numbers (counts, rates, quantiles, metric scores) were ever printed
-  during development — never frames, rows, positions or labels.
-* **One judgement call, stated openly.** The degradation that makes external games resemble the
-  provided tracking (§3) matches a handful of *aggregate, unlabelled* statistics of the provided
-  ATD (ball-visible share, run lengths of missing ball, visibility vs share of players standing,
-  players tracked per team). No ground truth and no video are involved; it is unsupervised
-  matching of the input distribution, in the spirit of "using as input the automatic tracking
-  data". Should the organisers consider it out of bounds, these parameters can be set from first
-  principles instead (`solution/degrade.py`). Nothing that is *trained or tuned* — models,
-  ensemble weights, decoder — sees anything but external games.
-* External data licences checked (CC BY 4.0 for the data used).
-
-### Stress test
-
-The external benchmark ties ball loss to stoppages more cleanly than a real tracker does. We
-therefore also scored every fold on a deliberately harsher degradation (`degrade.HARD`: ball lost
-up to 3 s early / 4 s late around stoppages, slow re-acquisition, ball visible through more of
-each stoppage, lower live-play visibility) and chose decoder settings on the average of both
-benchmarks. LightGBM alone: 0.792 standard → 0.765 stress; the best decoder settings are the
-same on both, so the choice is not an artefact of the easy benchmark. Ensemble: see §6.
+* No hand labels, manual corrections or human-produced data about the provided game.
+* **Training and tuning on external games only.** No parameter of the pipeline — simulator,
+  models, ensemble weights, decoder, kick-off detector — was fitted to, measured on, or chosen by
+  looking at the provided match. The selection rules were committed before the results
+  (`PREREGISTRATION.md`, commit `bac40f6`) and every decision is logged (`selection_log.md`).
+* Checks on the provided match: runtime sanity (row count, validator, byte-identical
+  regeneration) and one pipeline check of the final version on the public window.
+* **AI assistance.** An AI coding assistant was used to write and review code. The provided data
+  was never uploaded to it or to any other AI service: everything ran locally and only aggregate
+  numbers (counts, rates, metric scores) were ever printed during development.
+* Feature design and model hyper-parameters were developed in v1–v4 against external benchmarks
+  that included the calibrated simulator. v6 retrains every model under randomised degradation and
+  re-selects ensemble weighting, decoder and kick-off constants on clean environments only.
+* History, for transparency: an earlier version (v4, never submitted) calibrated its simulator to
+  aggregate, unlabelled statistics of the provided tracking and set its kick-off thresholds while
+  looking at aggregate diagnostics of the provided match. v6 replaces both, and the scripts that
+  did it (`stats_visibility.py`, `domain_check.py`, `degrade.py`'s calibrated profile) are kept as
+  history but are not part of the submission chain.
+* Licences: DFL data CC BY 4.0 (cited above; the committed models are trained on it — see
+  `NOTICE`); starter code and our code MIT.
 
 ## 9. Reproduction
 
 ```bash
 uv venv .venv --python 3.12
 uv pip install --python .venv -r requirements-solution.txt --extra-index-url https://download.pytorch.org/whl/cpu
+source .venv/bin/activate              # Windows: .venv\Scripts\activate
 # match bundle unpacked into data/ (DATA.md)
-python -m solution.predict --name <team_name>      # committed models; CPU; 1.5-7 min
+python -m solution.predict --name <team_name>          # committed models, CPU, ~2 min
 python evaluation/validate_submission.py submissions/<team_name>.csv
+python -m solution.repro_check --fresh-cache           # regenerates and compares the SHA-256
 ```
 
-Retraining from external data (optional; deterministic for LightGBM):
+Regenerates the submission byte for byte: checked in a freshly created CPU-only environment
+installed from `requirements-solution.txt`, with every cache rebuilt from the raw match files
+(SHA-256 `3333bf64350e9a915e1c61fd4871875266f56cf40246ac06b0fe19f243b202e1`, recorded in
+`models/submission.sha256`). To keep floating-point noise from reaching the file, the GRUs run on
+CPU with a single thread (so the result does not depend on the number of cores) and the blended
+probabilities are rounded to 4 decimals before decoding; the decoder's switching costs (4–48)
+dwarf any residual difference. This makes a cross-machine difference very unlikely, but it is
+verified on our hardware only; `solution/repro_check.py` checks it anywhere in one command.
+
+Retraining from external data (optional; LightGBM is bit-for-bit deterministic, GPU GRU training
+is not, which is why trained weights are committed):
 
 ```bash
-python -m solution.download_external                                  # DFL open data, 2.6 GB
-python -m solution.train cv && python -m solution.train final        # LightGBM
-SEQ_EPOCHS=30 SEQ_BASE_ONLY=1 SEQ_NAME=gru_base python -m solution.seq final
-SEQ_EPOCHS=30 SEQ_NAME=gru_full python -m solution.seq final
-SEQ_SEED=8 SEQ_EPOCHS=30 SEQ_BASE_ONLY=1 SEQ_NAME=gru_base_s8 python -m solution.seq final
-SEQ_SEED=8 SEQ_EPOCHS=30 SEQ_NAME=gru_full_s8 python -m solution.seq final
-# decoder: MTAH_STRESS=1 for every CV run, solution.ensemble for the blend, then
-python -m solution.robust_tune <standard oof> <stress oof> --out decoder_robust.json
+python -m solution.download_external                                     # DFL, 2.6 GB
+MTAH_DEGRADE=random MTAH_SEEDS=11,12,13,14 MTAH_MODEL_NAME=frame_lgbm_v6 python -m solution.train final
+for s in 7 8; do  # raw-feature GRU and full-feature GRU, two seeds each
+  MTAH_DEGRADE=random MTAH_SEEDS=11,12,13,14 SEQ_SEED=$s SEQ_EPOCHS=30 SEQ_BASE_ONLY=1 SEQ_NAME=gru_base$([ $s = 8 ] && echo _s8)_v6 python -m solution.seq final
+  MTAH_DEGRADE=random MTAH_SEEDS=11,12,13,14 SEQ_SEED=$s SEQ_EPOCHS=30 SEQ_NAME=gru_full$([ $s = 8 ] && echo _s8)_v6 python -m solution.seq final
+done
+# selection: cross-validate every member with MTAH_EVALS=rnd,rnd2,rndh (train cv / seq cv), blend
+# each LightGBM share w in {0.3, 0.5, 0.7} with solution.ensemble into oofc_v6_ens<w>_<env>, then
+#   python -m solution.clean_select ens_v6_final --save decoder_v6.json \
+#     --cand w0.3=oofc_v6_ens0.3_rnd,oofc_v6_ens0.3_rnd2,oofc_v6_ens0.3_rndh (same for w0.5, w0.7) \
+#     --grid '{"switch_cost":[3,4,6,8,12],"to_dead_cost":[16,32,48],"from_dead_cost":[16,32,48],"min_turnover_s":[2.5],"dead_bias":[-0.5,0.0,0.5]}'
 ```

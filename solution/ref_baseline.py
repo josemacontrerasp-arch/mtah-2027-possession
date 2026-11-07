@@ -1,4 +1,7 @@
-"""The official baseline's algorithm (nearest player + majority vote), run on degraded external
+"""NOT PART OF THE SUBMISSION CHAIN -- reference only (official baseline algorithm on external games). Kept for transparency; solution/predict.py never
+imports it.
+
+The official baseline's algorithm (nearest player + majority vote), run on degraded external
 games, so our model can be compared against it on equal terms -- without touching BAR-ATH.
 
     python -m solution.ref_baseline
