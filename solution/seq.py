@@ -224,6 +224,12 @@ def cmd_cv():
             os.makedirs(out_dir + "_hard", exist_ok=True)
             np.savez_compressed(os.path.join(out_dir + "_hard", "{}.npz".format(mid)), prob=ph,
                                 labels=mh.labels, half=mh.half)
+        for prof in [e for e in os.environ.get("MTAH_EVALS", "").split(",") if e]:
+            mr, Fr = eval_arrays(mid, profile=prof)
+            pr_ = predict_full(model, norm, Fr, mr.half, mr.n)
+            os.makedirs(out_dir + "_" + prof, exist_ok=True)
+            np.savez_compressed(os.path.join(out_dir + "_" + prof, "{}.npz".format(mid)),
+                                prob=pr_, labels=mr.labels, half=mr.half)
         ok = np.isfinite(prob[:, 0]) & (m.labels != X)
         acc = float(np.mean(np.argmax(prob[ok], axis=1) == m.labels[ok]))
         print("{}  seq oof written  frame acc {:.4f}  ({:.0f}s)".format(mid, acc, time.time() - t0),

@@ -48,6 +48,11 @@ LGB_PARAMS = dict(objective="multiclass", num_class=3,
 NUM_ROUNDS = int(os.environ.get("MTAH_ROUNDS", 400))
 OOF_SUB = os.environ.get("MTAH_OOF", "oof")
 STRESS = os.environ.get("MTAH_STRESS", "0") == "1"   # also score on the stress profile
+# Training degradation: "calibrated" (solution/degrade.py, matched to unlabelled statistics of the
+# provided tracking) or "random" (solution/degrade_random.py, first-principles priors only).
+DEGRADE = os.environ.get("MTAH_DEGRADE", "calibrated")
+# Extra evaluation conditions written next to the standard OOF: "rnd" = a fresh randomised tracker.
+EXTRA_EVALS = [e for e in os.environ.get("MTAH_EVALS", "").split(",") if e]
 
 
 def _feat_cache(name):
@@ -57,13 +62,19 @@ def _feat_cache(name):
 def variant_table(mid, swapped, seed, step):
     """Features + label for one degraded variant of an external match (cached)."""
     tag = "{}_{}_s{}_step{}".format(mid, "swap" if swapped else "orig", seed, step)
+    if DEGRADE == "random":
+        tag = "rnd_" + tag
     path = _feat_cache(tag)
     if os.path.isfile(path):
         return pd.read_parquet(path)
     m = load_ext(mid)
     if swapped:
         m = swap_teams(m)
-    m = degrade(m, seed=seed)
+    if DEGRADE == "random":
+        from solution.degrade_random import degrade_random
+        m = degrade_random(m, seed=seed)
+    else:
+        m = degrade(m, seed=seed)
     F = compute_features(m)
     y = m.labels[F.index.values]
     F["y"] = y
@@ -96,10 +107,19 @@ def fit(df, cols, rounds=NUM_ROUNDS):
     return lgb.train(LGB_PARAMS, ds, num_boost_round=rounds)
 
 
-def eval_arrays(mid, hard=False):
-    """Full-frame features of the evaluation variant, plus gt codes over the whole match.
-    hard=True uses the stress profile (solution/degrade.py HARD), evaluation only."""
-    m = degrade(load_ext(mid), seed=EVAL_SEED + (101 if hard else 0), hard=hard)
+def eval_arrays(mid, hard=False, profile=None):
+    """Full-frame features of an evaluation variant, plus gt codes over the whole match.
+    hard=True uses the stress profile (solution/degrade.py HARD); profile="rnd" a randomised
+    tracker drawn from solution/degrade_random.py priors (seed fixed per match). Evaluation only."""
+    if profile in ("rnd", "rnd2", "rndh"):
+        # clean evaluation trackers: two independent draws from the first-principles priors and
+        # one from their harsher half; fixed seeds per match, never used for training
+        from solution.degrade_random import degrade_random
+        base = {"rnd": 3000, "rnd2": 4000, "rndh": 5000}[profile]
+        m = degrade_random(load_ext(mid), seed=EVAL_SEED + base + MATCH_IDS.index(mid),
+                           harsh=(profile == "rndh"))
+    else:
+        m = degrade(load_ext(mid), seed=EVAL_SEED + (101 if hard else 0), hard=hard)
     F = compute_features(m)
     return m, F
 
@@ -141,6 +161,13 @@ def cmd_cv(args):
             os.makedirs(oof_dir + "_hard", exist_ok=True)
             np.savez_compressed(os.path.join(oof_dir + "_hard", "{}.npz".format(mid)), prob=ph,
                                 labels=mh.labels, half=mh.half)
+        for prof in EXTRA_EVALS:
+            mr, Fr = eval_arrays(mid, profile=prof)
+            pr_ = np.full((mr.n, 3), np.nan, np.float32)
+            pr_[Fr.index.values] = model.predict(Fr[cols]).astype(np.float32)
+            os.makedirs(oof_dir + "_" + prof, exist_ok=True)
+            np.savez_compressed(os.path.join(oof_dir + "_" + prof, "{}.npz".format(mid)),
+                                prob=pr_, labels=mr.labels, half=mr.half)
         frame_pred = np.full(m.n, X, np.int8)
         ok = np.isfinite(prob[:, 0])
         frame_pred[ok] = np.argmax(prob[ok], axis=1)

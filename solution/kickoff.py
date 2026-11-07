@@ -23,14 +23,14 @@ import numpy as np
 SEARCH_BEFORE = 250        # frames before the window start (the first window opens at the kick)
 SEARCH_AFTER = 25 * 600    # frames after the window start (10 minutes)
 TOL = 1.0                  # m of tolerance around halfway
-SIDE_SHARE = 0.9
+SIDE_SHARE = 0.85         # chosen on external kick-offs (solution/kickoff_check.py rederive)
 MIN_PER_TEAM = 7
-MIN_RUN = 50               # frames (2 s) the formation must hold
-MERGE_GAP = 125            # frames: breaks this short (a player stepping over) do not end it
+MIN_RUN = 25               # frames the formation must hold (external choice)
+MERGE_GAP = 50             # frames: short breaks do not end it (external choice)
 REFINE = 25                # frames around the run end to look for the ball's first movement
 KICK_SPEED = 3.0           # m/s
-SPEED_RISE = 0.3           # m/s: mean player speed must rise when the formation breaks
-PLAY_SPEED = 1.5           # m/s: ... into live play
+SPEED_RISE = 0.2           # m/s: mean player speed must rise when the formation breaks (external)
+PLAY_SPEED = 1.2           # m/s: ... into live play (external choice)
 
 
 def _formation(m, a, b):

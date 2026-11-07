@@ -85,8 +85,11 @@ naive random drop-out it scored 0.19 / 0.45).
   **detected from the tracking** (`solution/kickoff.py`): the one moment of a half when both teams
   stand entirely in their own halves, taking the formation that breaks into play (mean player
   speed rising). The same formation gives each team's attacking direction. No frame number of the
-  match is written in the code; the detector lands 2 and 14 frames from the kick-offs quoted in
-  the documentation, which we use only as a check.
+  match is written in the code. The detector's thresholds are generic physical values, and it is
+  **validated on external games** (`solution/kickoff_check.py`): on all 17 kick-offs after goals
+  in the seven DFL matches, on randomly degraded tracking, it finds 16, with a median error of
+  4 frames (0.16 s), 94% within one second and the attacking direction right every time. On the
+  provided match it lands 2 and 14 frames from the kick-offs quoted in the documentation.
 * No `X` on graded frames: abstaining costs macroF1 and gains nothing under spellF1.
 
 ## 5. Features (`solution/features.py`)

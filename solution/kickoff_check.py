@@ -67,5 +67,54 @@ def main():
                   np.mean(np.abs(e) <= 25), dir_ok, len(e)))
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and len(__import__("sys").argv) == 1:
     main()
+
+
+def rederive():
+    """Pre-registered rule 3: choose the detector thresholds on external kick-offs only.
+
+    Grid over the six thresholds; each setting is scored on every after-goal kick-off of the DFL
+    games under two independent randomised trackers. Objective: most kick-offs found, then the
+    smallest median absolute error, then the smallest mean absolute error.
+    """
+    import itertools
+    import solution.kickoff as K
+    cases = []
+    for i, mid in enumerate(MATCH_IDS):
+        clean = load_ext(mid)
+        kicks = centre_restarts(clean)
+        for draw in (0, 1):
+            deg = degrade_random(clean, seed=7000 + 100 * draw + i)
+            for r in kicks:
+                cases.append((deg, r))
+    grid = dict(SIDE_SHARE=[0.8, 0.85, 0.9], TOL=[0.5, 1.0, 2.0], MIN_RUN=[25, 50, 100],
+                MERGE_GAP=[50, 125, 250], SPEED_RISE=[0.2, 0.3, 0.5], PLAY_SPEED=[1.2, 1.5, 2.0])
+    current = {k: getattr(K, k) for k in grid}
+    rows = []
+    for vals in itertools.product(*grid.values()):
+        for k, v in zip(grid, vals):
+            setattr(K, k, v)
+        errs = []
+        for deg, r in cases:
+            k_, _ = K.detect(deg, max(0, r - WINDOW_BEFORE), min(deg.n, r + WINDOW_AFTER))
+            if k_ is not None:
+                errs.append(abs(k_ - r))
+        e = np.array(errs) if errs else np.array([1e9])
+        rows.append((len(errs), -float(np.median(e)), -float(np.mean(e)), dict(zip(grid, vals))))
+    for k, v in current.items():
+        setattr(K, k, v)
+    rows.sort(key=lambda t: (t[0], t[1], t[2]), reverse=True)
+    best = rows[0]
+    cur = [r for r in rows if r[3] == current][0]
+    print("external kick-off cases: {}".format(len(cases)))
+    print("best   : found {}  median|err| {:.0f}  mean|err| {:.1f}  {}".format(
+        best[0], -best[1], -best[2], best[3]))
+    print("current: found {}  median|err| {:.0f}  mean|err| {:.1f}  {}".format(
+        cur[0], -cur[1], -cur[2], cur[3]))
+    return best[3], current
+
+
+if __name__ == "__main__" and len(__import__("sys").argv) > 1 and \
+        __import__("sys").argv[1] == "rederive":
+    rederive()

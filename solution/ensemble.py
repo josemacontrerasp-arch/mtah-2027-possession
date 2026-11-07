@@ -14,8 +14,23 @@ import numpy as np
 from solution.external_dfl import CACHE_DIR, MATCH_IDS
 
 
-def blend(parts):
-    """parts: list of (prob array, weight); NaN-aware weighted mean, renormalised per row."""
+def blend(parts, pooling="linear"):
+    """parts: list of (prob array, weight); NaN-aware weighted pool, renormalised per row.
+
+    pooling="linear" is a weighted mean of probabilities; "log" a weighted geometric mean
+    (log-linear pooling), which rewards agreement between members."""
+    if pooling == "log":
+        acc, wsum = None, None
+        for p, w in parts:
+            ok = np.isfinite(p[:, :1])
+            v = np.where(ok, np.log(np.clip(p, 1e-6, 1.0)), 0.0) * w
+            acc = v if acc is None else acc + v
+            ws = ok.astype(np.float64) * w
+            wsum = ws if wsum is None else wsum + ws
+        lg = np.where(wsum > 0, acc / np.maximum(wsum, 1e-12), np.nan)
+        lg = lg - np.nanmax(lg, axis=1, keepdims=True)
+        out = np.exp(lg)
+        return (out / np.nansum(out, axis=1, keepdims=True)).astype(np.float32)
     acc, wsum = None, None
     for p, w in parts:
         ok = np.isfinite(p[:, :1])
@@ -27,7 +42,7 @@ def blend(parts):
     return (out / np.nansum(out, axis=1, keepdims=True)).astype(np.float32)
 
 
-def main(out, specs):
+def main(out, specs, pooling="linear"):
     os.makedirs(os.path.join(CACHE_DIR, out), exist_ok=True)
     for mid in MATCH_IDS:
         parts, labels, half = [], None, None
@@ -37,9 +52,13 @@ def main(out, specs):
             parts.append((z["prob"].astype(np.float64), float(w)))
             labels, half = z["labels"], z["half"]
         np.savez_compressed(os.path.join(CACHE_DIR, out, "{}.npz".format(mid)),
-                            prob=blend(parts), labels=labels, half=half)
-    print("wrote", out, "from", specs)
+                            prob=blend(parts, pooling), labels=labels, half=half)
+    print("wrote", out, "from", specs, "pooling", pooling)
 
 
 if __name__ == "__main__":
-    main(sys.argv[1], sys.argv[2:])
+    args = sys.argv[1:]
+    pool = "linear"
+    if args and args[0].startswith("--pool="):
+        pool = args.pop(0).split("=", 1)[1]
+    main(args[0], args[1:], pool)
