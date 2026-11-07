@@ -1,0 +1,13 @@
+{
+ "members": [
+  {"kind": "lgbm", "file": "frame_lgbm.txt", "features": "frame_lgbm_features.json", "weight": 0.5},
+  {"kind": "seq", "name": "gru_base", "weight": 0.175},
+  {"kind": "seq", "name": "gru_base_s8", "weight": 0.175},
+  {"kind": "seq", "name": "gru_full", "weight": 0.075},
+  {"kind": "seq", "name": "gru_full_s8", "weight": 0.075}
+ ],
+ "decoder": "decoder_robust.json",
+ "fusion": {"broadcast": false, "tags": false},
+ "round": 4,
+ "note": "members, weights and decoder chosen on leave-one-match-out predictions for 7 external DFL games; decoder = best mean spellF1 over the standard and stress benchmarks (0.813 / 0.794)"
+}

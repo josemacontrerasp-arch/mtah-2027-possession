@@ -1,5 +1,24 @@
 # More than a Hack 2027 — Phase 1: Ball Possession
 
+> ## Team submission — start here
+>
+> This fork adds our solution in [`solution/`](solution/). The technical document is
+> [`solution/README.md`](solution/README.md). To regenerate the submitted file exactly
+> (CPU only, ~7 minutes, match bundle unpacked into `data/` as described in DATA.md):
+>
+> ```bash
+> uv venv .venv --python 3.12
+> uv pip install --python .venv -r requirements-solution.txt --extra-index-url https://download.pytorch.org/whl/cpu
+> .venv/bin/python -m solution.predict --name <team_name>        # Windows: .venv\Scripts\python
+> .venv/bin/python evaluation/validate_submission.py submissions/<team_name>.csv
+> ```
+>
+> Everything learned or tuned was fitted on external games only (DFL open data, CC BY 4.0); the
+> trained models are committed in `solution/models/`. No match data is in this repository.
+> Our code is released under the same MIT licence as the starter code ([LICENSE](LICENSE)).
+
+---
+
 **Organised by [Metrica Sports](https://metrica-sports.com), [FC Barcelona](https://www.fcbarcelona.com)
 and the [Mobile World Capital Barcelona](https://www.mwcbarcelona.com)**, at the Talent Arena in Barcelona.
 

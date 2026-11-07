@@ -1,0 +1,11 @@
+{
+ "params": {
+  "switch_cost": 6,
+  "to_dead_cost": 32,
+  "from_dead_cost": 32,
+  "min_turnover_s": 2.5,
+  "dead_bias": -0.5
+ },
+ "cv_spellF1": 0.7866776068384685,
+ "cv_macroF1": 0.9363700880726313
+}

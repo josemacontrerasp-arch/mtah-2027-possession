@@ -1,0 +1,2 @@
+# Trained models must stay byte-exact on every platform (the submission is regenerated from them).
+solution/models/** -text

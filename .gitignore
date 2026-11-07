@@ -62,3 +62,7 @@ __pycache__/
 venv/
 env/
 .DS_Store
+
+# -- team solution ----------------------------------------------------------------------------
+# Per-frame outputs stay local; the repo regenerates them (python -m solution.predict).
+submissions/
