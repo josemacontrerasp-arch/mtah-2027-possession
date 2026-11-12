@@ -2,6 +2,7 @@
 
     python -m solution.train cv        # 7-fold LOMO on DFL: OOF probabilities -> data cache
     python -m solution.train final     # fit on all external games -> models/frame_lgbm.txt
+    python -m solution.train build     # only build the degraded training copies (cached), in parallel
 
 Everything here sees external data only. The provided match is never loaded in this module.
 """
@@ -51,8 +52,20 @@ STRESS = os.environ.get("MTAH_STRESS", "0") == "1"   # also score on the stress 
 # Training degradation: "calibrated" (solution/degrade.py, matched to unlabelled statistics of the
 # provided tracking) or "random" (solution/degrade_random.py, first-principles priors only).
 DEGRADE = os.environ.get("MTAH_DEGRADE", "random")   # v6 default; "calibrated" = v4 history
+# Randomised training trackers: "shared" = one tracker per seed, applied to every external game in
+# both orientations (v6: four trackers in all); "percopy" = every (game, orientation, seed) copy
+# draws its own tracker (the v7 candidate: 56 trackers).
+TRACKERS = os.environ.get("MTAH_TRACKERS", "shared")
 # Extra evaluation conditions written next to the standard OOF: "rnd" = a fresh randomised tracker.
 EXTRA_EVALS = [e for e in os.environ.get("MTAH_EVALS", "").split(",") if e]
+
+
+def tracker_seed(mid, swapped, seed):
+    """Seed of the simulated tracker for one training copy. Per-copy seeds start at 1,000,000, so
+    they cannot coincide with the evaluation trackers (seeds 3101-5107, see eval_arrays)."""
+    if TRACKERS == "percopy":
+        return 1_000_000 + 10_000 * MATCH_IDS.index(mid) + 1_000 * int(swapped) + seed
+    return seed
 
 
 def _feat_cache(name):
@@ -63,7 +76,7 @@ def variant_table(mid, swapped, seed, step):
     """Features + label for one degraded variant of an external match (cached)."""
     tag = "{}_{}_s{}_step{}".format(mid, "swap" if swapped else "orig", seed, step)
     if DEGRADE == "random":
-        tag = "rnd_" + tag
+        tag = ("rndpc_" if TRACKERS == "percopy" else "rnd_") + tag
     path = _feat_cache(tag)
     if os.path.isfile(path):
         return pd.read_parquet(path)
@@ -72,7 +85,7 @@ def variant_table(mid, swapped, seed, step):
         m = swap_teams(m)
     if DEGRADE == "random":
         from solution.degrade_random import degrade_random
-        m = degrade_random(m, seed=seed)
+        m = degrade_random(m, seed=tracker_seed(mid, swapped, seed))
     else:
         m = degrade(m, seed=seed)
     F = compute_features(m)
@@ -95,6 +108,24 @@ def train_rows(mids):
                 t["mid"] = mid
                 parts.append(t)
     return pd.concat(parts, ignore_index=True)
+
+
+def _build_one(job):
+    variant_table(job[0], job[1], job[2], TRAIN_STEP)
+    return job
+
+
+def cmd_build(args):
+    """Build (and cache) every degraded training copy, several at a time. Each copy is seeded on
+    its own, so the tables are the same whatever the number of workers."""
+    from concurrent.futures import ProcessPoolExecutor
+    jobs = [(mid, sw, s) for mid in MATCH_IDS for sw in (False, True) for s in TRAIN_SEEDS]
+    t0 = time.time()
+    with ProcessPoolExecutor(args.jobs) as ex:
+        for k, job in enumerate(ex.map(_build_one, jobs), 1):
+            print("built {}/{}  {} {} seed {}  ({:.0f}s)".format(
+                k, len(jobs), job[0], "swap" if job[1] else "orig", job[2], time.time() - t0),
+                flush=True)
 
 
 def feature_columns(df):
@@ -194,7 +225,8 @@ def cmd_final(args):
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
-    ap.add_argument("cmd", choices=["cv", "final"])
+    ap.add_argument("cmd", choices=["cv", "final", "build"])
     ap.add_argument("--importance", action="store_true")
+    ap.add_argument("--jobs", type=int, default=4, help="parallel workers for `build`")
     a = ap.parse_args()
-    {"cv": cmd_cv, "final": cmd_final}[a.cmd](a)
+    {"cv": cmd_cv, "final": cmd_final, "build": cmd_build}[a.cmd](a)

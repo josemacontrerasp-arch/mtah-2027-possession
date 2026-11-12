@@ -55,3 +55,38 @@ The older `standard` and `hard` profiles were built from provided-ATD statistics
 ## Log
 
 Results and decisions are appended to `solution/selection_log.md` as they are made.
+
+---
+
+## Addendum, 12 Nov 2026 — one further candidate (v7)
+
+*Written and committed before any v7 number was computed.*
+
+**Why.** The final review of v6 found that its training used four simulated trackers (one per
+seed), each applied to all seven external games in both orientations — not "a different tracker
+per copy" as the candidates table above says. The technical document was corrected to describe
+what v6 really does. v7 tests the design as originally described.
+
+**Candidate v7.** Identical to v6 except that each of the 56 training copies (7 games × 2
+orientations × 4 draws) is degraded by its own tracker, drawn from the same `degrade_random`
+priors (`MTAH_TRACKERS=percopy`; tracker seed derived from game, orientation and draw index, and
+disjoint from the evaluation seeds). Same features, same model hyper-parameters and training
+length, same ensemble family (LightGBM share 0.3 / 0.5 / 0.7, GRU split 70:30), same decoder grid,
+same clean environments, same nested procedure.
+
+5. **v6 → v7.** v6 stays the submission unless **all** of the following hold, in which case v7
+   replaces it:
+   * v7's nested clean score is at least v6's + 0.005 (v6: 0.774, recomputed with the same script
+     for a paired comparison);
+   * v7 is better on at least 5 of the 7 matches (per-match nested scores);
+   * in none of the three clean environments does the nested score drop by more than 0.003.
+6. **One conditional follow-up (v7b).** Only if rule 5 adopts v7: the same design with eight
+   trackers per game and orientation (112 copies), LightGBM on all rows and the GRUs trained for
+   the same number of gradient steps as v7 (15 epochs instead of 30). v7b replaces v7 only under
+   the three criteria of rule 5, measured against v7. If rule 5 does not adopt v7, v7b is not run.
+7. **No other training variant** is tried before the deadline, and no model or decoder change is
+   made after 14 Nov.
+
+Rule 4 is unchanged: on the provided match a new final version gets runtime sanity checks only.
+The public-window pipeline check was spent on v6 and is **not** repeated for v7 or v7b — their
+prediction code is the v6 code; only trained weights and the selected decoder setting differ.
