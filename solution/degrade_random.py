@@ -1,14 +1,17 @@
-"""Domain-randomised degradation: a different plausible automatic tracker for every copy.
+"""Domain-randomised degradation: plausible automatic trackers drawn at random.
 
 The calibrated degradation (solution/degrade.py) matches a few aggregate, unlabelled statistics
 of the provided tracking. The organisers' 3-Nov email says parameters "MUST be tuned on external
 data", so this module removes that dependence altogether: nothing here was fitted to, measured
-on, or chosen by looking at the provided match. Every degraded copy of an external game draws its
-own tracker from broad first-principles priors -- from a tracker that keeps the ball almost
-always to one that loses it most of the time, ball loss tied loosely or tightly to stoppages,
-noisy or smooth positions, few or many missing players -- and the model learns to be right
-across that whole family. (For orientation only: the statistics the organisers publish in DATA.md
--- ball visible on ~57-59% of frames, ~20.5 tracked objects -- fall inside these priors.)
+on, or chosen by looking at the provided match. Each seed draws one tracker from broad
+first-principles priors -- from a tracker that keeps the ball almost always to one that loses it
+most of the time, ball loss tied loosely or tightly to stoppages, noisy or smooth positions, few
+or many missing players -- and the model learns to be right across that family. The submitted
+models (v6) use four seeds, each tracker applied to every external game in both orientations;
+solution/train.py can instead give every copy its own tracker (MTAH_TRACKERS=percopy, the v7
+candidate: tested and not adopted, see selection_log.md). For orientation only: the statistics
+the organisers publish in DATA.md -- ball visible on ~57-59% of frames, ~20.5 tracked objects --
+fall inside these priors.
 
     from solution.degrade_random import degrade_random
     m2 = degrade_random(m, seed)

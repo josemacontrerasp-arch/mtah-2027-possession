@@ -4,13 +4,14 @@
 >
 > This fork adds our solution in [`solution/`](solution/). The technical document is
 > [`solution/README.md`](solution/README.md). To regenerate the submitted file exactly
-> (CPU only, ~2 minutes, match bundle unpacked into `data/` as described in DATA.md):
+> (CPU only, ~3 minutes, match bundle unpacked into `data/` as described in DATA.md):
 >
 > ```bash
 > uv venv .venv --python 3.12
 > uv pip install --python .venv -r requirements-solution.txt --extra-index-url https://download.pytorch.org/whl/cpu
 > .venv/bin/python -m solution.predict --name <team_name>        # Windows: .venv\Scripts\python
 > .venv/bin/python evaluation/validate_submission.py submissions/<team_name>.csv
+> .venv/bin/python -m solution.repro_check --fresh-cache          # compares with the recorded SHA-256
 > ```
 >
 > Nothing is trained, tuned or fitted on the provided match: models are trained on external games

@@ -1,6 +1,6 @@
 # Frame-level possession from automatic tracking — technical document
 
-*More than a Hack 2027, Phase 1. Version v6 ("clean room"), 7 November 2026.*
+*More than a Hack 2027, Phase 1. Version v6 ("clean room"), selected 7 November 2026; document updated 13 November 2026.*
 
 ## 1. Approach
 
@@ -116,10 +116,18 @@ weighting chosen on six matches and scored on the seventh:
 | pipeline | `rnd` | `rnd2` | `rndh` (harsh) | **nested** |
 |---|---|---|---|---|
 | official baseline algorithm (for scale, same games) | | | | ≈ 0.32\* |
-| v4 — calibrated to provided-ATD statistics | 0.709 | 0.745 | 0.589 | 0.679 |
-| **v6 — clean room (submitted)** | **0.776** | **0.783** | **0.763** | **0.774** |
+| v4 — calibrated to provided-ATD statistics | 0.707 | 0.745 | 0.586 | 0.679 |
+| **v6 — clean room (submitted)** | **0.776** | **0.783** | **0.761** | **0.774** |
+| v7 — its own tracker for every training copy (not adopted) | 0.782 | 0.787 | 0.762 | 0.777 |
 
-v6 is better on all seven held-out matches. \*on the earlier calibrated benchmark.
+v6 is better than v4 on all seven held-out matches. \*on the earlier calibrated benchmark.
+
+**v7, tested and not adopted.** v6 draws four simulated trackers and applies each to every game;
+v7 gives each of the 56 training copies its own. The rule for switching was written and committed
+before v7 was trained (`PREREGISTRATION.md`, addendum of 12 Nov): at least +0.005 nested, better
+on at least 5 of the 7 matches, no environment worse by more than 0.003. v7 gained +0.0035 and was
+better on 4 of 7 matches — within the noise of seven games — so v6 stays. (LightGBM alone: 0.735
+for v6, 0.733 for v7.)
 
 The split between the two GRU kinds (70:30) was re-checked on the clean environments against
 50:50 and 90:10: differences ≤ 0.001 in-sample and a lower nested score with the extra choice, so
@@ -152,9 +160,12 @@ where both agree the ball is alive; frames aligned. Seventeen possessions cannot
 * **Training and tuning on external games only.** No parameter of the pipeline — simulator,
   models, ensemble weights, decoder, kick-off detector — was fitted to, measured on, or chosen by
   looking at the provided match. The selection rules were committed before the results
-  (`PREREGISTRATION.md`, commit `bac40f6`) and every decision is logged (`selection_log.md`).
+  (`PREREGISTRATION.md`, commit `bac40f6`; addendum for the v7 candidate, commit `f0c5e55`) and
+  every decision is logged (`selection_log.md`).
 * Checks on the provided match: runtime sanity (row count, validator, byte-identical
-  regeneration) and one pipeline check of the final version on the public window.
+  regeneration), numerical-robustness checks that print hashes and counts only (regeneration
+  under emulated CPUs, noise injection, equality of the feature table between a fresh parse and
+  the cache) and one pipeline check of the final version on the public window.
 * **AI assistance.** An AI coding assistant was used to write and review code. The provided data
   was never uploaded to it or to any other AI service: everything ran locally and only aggregate
   numbers (counts, rates, metric scores) were ever printed during development.
@@ -176,22 +187,42 @@ uv venv .venv --python 3.12
 uv pip install --python .venv -r requirements-solution.txt --extra-index-url https://download.pytorch.org/whl/cpu
 source .venv/bin/activate              # Windows: .venv\Scripts\activate
 # match bundle unpacked into data/ (DATA.md)
-python -m solution.predict --name <team_name>          # committed models, CPU, ~2 min
+python -m solution.predict --name <team_name>          # committed models, CPU, ~3 min
 python evaluation/validate_submission.py submissions/<team_name>.csv
 python -m solution.repro_check --fresh-cache           # regenerates and compares the SHA-256
+python -m solution.preflight --name <team_name>        # every scriptable check of SUBMISSION.md
 ```
 
-Regenerates the submission byte for byte: checked in a freshly created CPU-only environment
-installed from `requirements-solution.txt`, with every cache rebuilt from the raw match files
-(SHA-256 `3333bf64350e9a915e1c61fd4871875266f56cf40246ac06b0fe19f243b202e1`, recorded in
-`models/submission.sha256`). To keep floating-point noise from reaching the file, the GRUs run on
-CPU with a single thread (so the result does not depend on the number of cores) and the blended
-probabilities are rounded to 4 decimals before decoding; the decoder's switching costs (4–48)
-dwarf any residual difference. This makes a cross-machine difference very unlikely, but it is
-verified on our hardware only; `solution/repro_check.py` checks it anywhere in one command.
+`MTAH_DATA_DIR` may point at the bundle instead of unpacking it into `data/`. The exact versions
+of every package in the environment that produced the file are in `requirements-solution.lock.txt`.
 
-Retraining from external data (optional; LightGBM is bit-for-bit deterministic, GPU GRU training
-is not, which is why trained weights are committed):
+**The same file on any machine.** The submission's SHA-256 is
+`3333bf64350e9a915e1c61fd4871875266f56cf40246ac06b0fe19f243b202e1` (`models/submission.sha256`).
+The chain is built so that floating-point differences between machines cannot reach the file:
+
+* **features** use only correctly rounded operations (add, multiply, divide, square root) in a
+  fixed order on arrays with a fixed memory layout — no maths-library call — and are stored in
+  single precision;
+* LightGBM prediction is deterministic; the GRUs run on CPU, single thread, in **double
+  precision**, where rounding differences between CPUs or linear-algebra libraries are ~1e-15;
+* the blended probabilities are put on a **1e-4 grid** and the decoder works in **exact integer
+  arithmetic** (log-probabilities and costs in units of 1e-6 nat; every Viterbi score is an exact
+  integer), so the decoded path is a pure function of the gridded probabilities, with ties broken
+  in a fixed order.
+
+Checked: (1) a freshly created CPU-only environment and a fresh clone, every cache rebuilt from
+the raw files; (2) the same with instruction sets switched off to imitate other CPUs — MKL and
+PyTorch limited to SSE4.2, NumPy without AVX2/FMA3, numba compiled for a generic x86-64, each
+alone and all together — the same file every time; (3) noise injection
+(`solution/noise_check.py`): multiplying every member probability by 1 + 1e-10 × noise, about a
+million times the rounding differences double precision produces, left all 597,957 grid values
+and the file unchanged in 200 of 200 trials, and even 1e-7 (single-precision level) changed
+about 7 grid values per trial and never the file. We could only run x86-64 Windows hardware
+ourselves; `solution/repro_check.py` verifies any other machine in one command.
+
+Retraining from external data (optional). LightGBM training is bit-for-bit deterministic:
+`solution.train final` rebuilds the committed model file exactly (checked). GPU GRU training is
+not, which is why trained weights are committed:
 
 ```bash
 python -m solution.download_external                                     # DFL, 2.6 GB
@@ -205,4 +236,7 @@ done
 #   python -m solution.clean_select ens_v6_final --save decoder_v6.json \
 #     --cand w0.3=oofc_v6_ens0.3_rnd,oofc_v6_ens0.3_rnd2,oofc_v6_ens0.3_rndh (same for w0.5, w0.7) \
 #     --grid '{"switch_cost":[3,4,6,8,12],"to_dead_cost":[16,32,48],"from_dead_cost":[16,32,48],"min_turnover_s":[2.5],"dead_bias":[-0.5,0.0,0.5]}'
+# the v7 candidate (not adopted) is the same recipe with MTAH_TRACKERS=percopy; two selections are
+# compared under the pre-registered criteria with
+#   python -m solution.clean_select --compare <candidate name> <incumbent name>
 ```

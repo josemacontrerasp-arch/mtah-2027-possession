@@ -54,7 +54,7 @@ STRESS = os.environ.get("MTAH_STRESS", "0") == "1"   # also score on the stress 
 DEGRADE = os.environ.get("MTAH_DEGRADE", "random")   # v6 default; "calibrated" = v4 history
 # Randomised training trackers: "shared" = one tracker per seed, applied to every external game in
 # both orientations (v6: four trackers in all); "percopy" = every (game, orientation, seed) copy
-# draws its own tracker (the v7 candidate: 56 trackers).
+# draws its own tracker (the v7 candidate: 56 trackers; tested and not adopted, selection_log.md).
 TRACKERS = os.environ.get("MTAH_TRACKERS", "shared")
 # Extra evaluation conditions written next to the standard OOF: "rnd" = a fresh randomised tracker.
 EXTRA_EVALS = [e for e in os.environ.get("MTAH_EVALS", "").split(",") if e]

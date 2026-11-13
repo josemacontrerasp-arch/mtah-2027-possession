@@ -166,8 +166,14 @@ def check_repo():
               or f.startswith("submissions/")]
     report("PASS" if not leaked else "FAIL", "no match data or outputs tracked by git",
            ", ".join(leaked[:5]))
-    if shutil.which("gh"):
-        r = subprocess.run(["gh", "repo", "view", "--json", "visibility,url", "--jq",
+    # the repository this branch is pushed to -- not whichever remote `gh` would pick by default
+    # (a fork also has the organisers' repository as a remote, and that one is public)
+    code, tracking = git("rev-parse", "--abbrev-ref", "@{u}")
+    remote = tracking.split("/")[0] if code == 0 and "/" in tracking else "origin"
+    _, url = git("remote", "get-url", remote)
+    url = url[:-4] if url.endswith(".git") else url
+    if shutil.which("gh") and url:
+        r = subprocess.run(["gh", "repo", "view", url, "--json", "visibility,url", "--jq",
                             ".visibility + \" \" + .url"], cwd=ROOT, capture_output=True, text=True)
         out = r.stdout.strip()
         if r.returncode == 0 and out:
@@ -175,7 +181,8 @@ def check_repo():
             report("PASS" if public else "TODO", "repository is public", out if public else
                    out + "  (make it public when you submit)")
             return
-    report("TODO", "repository is public", "could not check here; the form needs a public URL")
+    report("TODO", "repository is public", "could not check {}; the form needs a public URL".format(
+        url or "the remote"))
 
 
 def check_document(name, sha):
