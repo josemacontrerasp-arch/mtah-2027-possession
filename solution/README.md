@@ -184,7 +184,7 @@ where both agree the ball is alive; frames aligned. Seventeen possessions cannot
 
 ```bash
 uv venv .venv --python 3.12
-uv pip install --python .venv -r requirements-solution.txt --extra-index-url https://download.pytorch.org/whl/cpu
+uv pip install --python .venv -r requirements-solution.txt -c requirements-solution.lock.txt
 source .venv/bin/activate              # Windows: .venv\Scripts\activate
 # match bundle unpacked into data/ (DATA.md)
 python -m solution.predict --name <team_name>          # committed models, CPU, ~3 min
@@ -193,32 +193,41 @@ python -m solution.repro_check --fresh-cache           # regenerates and compare
 python -m solution.preflight --name <team_name>        # every scriptable check of SUBMISSION.md
 ```
 
-`MTAH_DATA_DIR` may point at the bundle instead of unpacking it into `data/`. The exact versions
-of every package in the environment that produced the file are in `requirements-solution.lock.txt`.
+Plain `pip` works too (`python -m pip install -r requirements-solution.txt -c
+requirements-solution.lock.txt` in a Python 3.12 environment). Everything installs from PyPI;
+the lock file pins every indirect dependency, and both commands were checked to build exactly the
+environment it lists. `MTAH_DATA_DIR` may point at the bundle instead of unpacking it into
+`data/`.
 
 **The same file on any machine.** The submission's SHA-256 is
 `3333bf64350e9a915e1c61fd4871875266f56cf40246ac06b0fe19f243b202e1` (`models/submission.sha256`).
-The chain is built so that floating-point differences between machines cannot reach the file:
+The chain is built so that floating-point differences between machines do not reach the file:
 
 * **features** use only correctly rounded operations (add, multiply, divide, square root) in a
-  fixed order on arrays with a fixed memory layout — no maths-library call — and are stored in
-  single precision;
+  fixed order, on arrays whose memory layout is the same on every code path — no maths-library
+  call;
 * LightGBM prediction is deterministic; the GRUs run on CPU, single thread, in **double
-  precision**, where rounding differences between CPUs or linear-algebra libraries are ~1e-15;
+  precision**;
 * the blended probabilities are put on a **1e-4 grid** and the decoder works in **exact integer
   arithmetic** (log-probabilities and costs in units of 1e-6 nat; every Viterbi score is an exact
-  integer), so the decoded path is a pure function of the gridded probabilities, with ties broken
-  in a fixed order.
+  integer), so the labels are a pure function of the gridded probabilities, with ties broken in a
+  fixed order. The file can change only if a blended probability crosses a rounding boundary.
 
-Checked: (1) a freshly created CPU-only environment and a fresh clone, every cache rebuilt from
-the raw files; (2) the same with instruction sets switched off to imitate other CPUs — MKL and
-PyTorch limited to SSE4.2, NumPy without AVX2/FMA3, numba compiled for a generic x86-64, each
-alone and all together — the same file every time; (3) noise injection
-(`solution/noise_check.py`): multiplying every member probability by 1 + 1e-10 × noise, about a
-million times the rounding differences double precision produces, left all 597,957 grid values
-and the file unchanged in 200 of 200 trials, and even 1e-7 (single-precision level) changed
-about 7 grid values per trial and never the file. We could only run x86-64 Windows hardware
-ourselves; `solution/repro_check.py` verifies any other machine in one command.
+Measured with `solution/noise_check.py` (counts and distances only): of the 476,571 blended
+probabilities, the one closest to a rounding boundary is 1.5e-11 away. Running again with the
+maths libraries limited to older instruction sets — `MKL_ENABLE_INSTRUCTIONS=SSE4_2`,
+`ATEN_CPU_CAPABILITY=default`, `NPY_DISABLE_CPU_FEATURES="AVX2 FMA3"`, `NUMBA_CPU_NAME=generic` —
+moves the probabilities by at most 6.7e-16, more than 20,000 times less, and leaves the feature
+table bit-identical. Injected relative noise of 1e-10 changed no grid value in 200 trials; 1e-7,
+the level of single precision, changed about 7 grid values per trial and never the file. The
+steps that still depend on the platform (the GRU arithmetic, one interpolation, two exponentials)
+act at the 1e-15 level, behind the grid.
+
+Also checked: environments built from scratch with `uv` and with `pip`; a fresh clone with every
+cache rebuilt from the raw files (`solution/preflight.py` repeats this); six emulated CPU
+configurations, the same file every time. What we could not run is other hardware — only x86-64
+Windows — so `python -m solution.repro_check --fresh-cache` checks any machine in one command.
+On macOS, LightGBM needs `brew install libomp`.
 
 Retraining from external data (optional). LightGBM training is bit-for-bit deterministic:
 `solution.train final` rebuilds the committed model file exactly (checked). GPU GRU training is

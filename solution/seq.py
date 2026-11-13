@@ -107,8 +107,10 @@ def _train_tables(mids):
     return seqs
 
 
-def build_model(torch, n_in):
+def build_model(torch, n_in, hidden=None):
+    """hidden: layer width; None = the training setting (SEQ_HIDDEN). A saved model passes its own."""
     nn = torch.nn
+    HIDDEN = hidden or globals()["HIDDEN"]
 
     class Net(nn.Module):
         def __init__(self):
@@ -185,7 +187,8 @@ def predict_full(model, norm, F, half, n_total, device="cuda", double=False):
     torch = _torch()
     dt = np.float64 if double else np.float32
     if double:
-        model = model.double()
+        import copy
+        model = copy.deepcopy(model).double()      # leave the caller's float32 model as it is
     prob = np.full((n_total, 3), np.nan, dt)
     idx_all = F.index.values
     for h in (1, 2):
@@ -270,7 +273,8 @@ def load_final(device="cuda", name=None):
     state = json.load(open(os.path.join(MODEL_DIR, name + "_norm.json")))
     norm = Norm.from_state(state)
     n_in = len(norm.cols) + len(norm.mask_cols)
-    model = build_model(torch, n_in).to(device)
+    # the width the weights were trained with, not whatever SEQ_HIDDEN says in this shell
+    model = build_model(torch, n_in, hidden=state.get("hidden")).to(device)
     model.load_state_dict(torch.load(os.path.join(MODEL_DIR, name + ".pt"), map_location=device))
     model.eval()
     return model, norm

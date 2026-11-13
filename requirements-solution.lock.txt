@@ -1,14 +1,17 @@
-# Exact environment that produced the submission (every package, including indirect ones).
-# Reference only: install from requirements-solution.txt as described there. If a newer release of
-# an indirect dependency ever breaks that install, these are the versions to fall back on.
+# Constraints file: the exact version of every package (indirect ones included) in the environment
+# that produced the submission. Used with -c so that a later release of an indirect dependency
+# cannot change or break the install:
 #
-# Windows 11 x86-64, Python 3.12.10, CPU build of torch (index https://download.pytorch.org/whl/cpu).
-# colorama is a Windows-only dependency of tqdm.
+#   uv pip install --python .venv -r requirements-solution.txt -c requirements-solution.lock.txt
+#
+# Reference environment: Windows 11 x86-64, Python 3.12.10, packages from PyPI (13 Nov 2026).
+# colorama is a Windows-only dependency of tqdm; on Linux, PyPI's torch also pulls in the NVIDIA
+# runtime libraries, which are not listed here and are not used (prediction runs on CPU).
 cloudpickle==3.1.2
 colorama==0.4.6
 contourpy==1.4.0
 cycler==0.12.1
-filelock==4.2.9
+filelock==4.2.10
 fonttools==4.68.0
 fsspec==2026.9.0
 jinja2==3.1.6
@@ -34,8 +37,8 @@ scikit-learn==1.9.1
 scipy==1.18.1
 setuptools==81.0.0
 sympy==1.14.0
-threadpoolctl==3.7.0
-torch==2.11.0+cpu
+threadpoolctl==3.8.0
+torch==2.11.0
 tqdm==4.70.1
 typing-extensions==4.16.0
 tzdata==2026.6

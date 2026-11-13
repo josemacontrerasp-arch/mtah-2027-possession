@@ -8,7 +8,7 @@
 >
 > ```bash
 > uv venv .venv --python 3.12
-> uv pip install --python .venv -r requirements-solution.txt --extra-index-url https://download.pytorch.org/whl/cpu
+> uv pip install --python .venv -r requirements-solution.txt -c requirements-solution.lock.txt
 > .venv/bin/python -m solution.predict --name <team_name>        # Windows: .venv\Scripts\python
 > .venv/bin/python evaluation/validate_submission.py submissions/<team_name>.csv
 > .venv/bin/python -m solution.repro_check --fresh-cache          # compares with the recorded SHA-256

@@ -36,15 +36,24 @@ def main():
     ap.add_argument("--record", action="store_true", help="store this run's hash as expected")
     a = ap.parse_args()
     if a.fresh_cache:
-        shutil.rmtree(os.path.join(ROOT, "data", "cache"), ignore_errors=True)
+        cache = os.path.join(ROOT, "data", "cache")
+        shutil.rmtree(cache, ignore_errors=True)
+        if os.path.isdir(cache):
+            sys.exit("could not delete data/cache (is another program using it?)")
     out = os.path.join(ROOT, "submissions", a.name + ".csv")
     if os.path.isfile(out):
         os.remove(out)                     # never compare a stale file from an earlier run
     r = subprocess.run([a.python, "-W", "ignore", "-m", "solution.predict", "--name", a.name],
                        cwd=ROOT, capture_output=True, text=True)
     if r.returncode != 0 or not os.path.isfile(out):
-        print(r.stdout[-2000:], r.stderr[-2000:])
-        sys.exit("prediction failed (exit code {})".format(r.returncode))
+        # keep the child's output in a file rather than on screen: an error message from a parser
+        # can quote the data it choked on
+        log = os.path.join(ROOT, "submissions", a.name + "_predict.log")
+        os.makedirs(os.path.dirname(log), exist_ok=True)
+        with open(log, "w", encoding="utf-8", errors="replace") as fh:
+            fh.write(r.stdout + "\n--- stderr ---\n" + r.stderr)
+        sys.exit("prediction failed (exit code {}); its output is in {}".format(
+            r.returncode, os.path.relpath(log, ROOT)))
     got = sha256(out)
     v = subprocess.run([a.python, os.path.join(ROOT, "evaluation", "validate_submission.py"), out],
                        cwd=ROOT, capture_output=True, text=True)

@@ -31,15 +31,20 @@ _TABLE_MARGIN = 1e-6     # units; a platform's log would need an error of ~500 u
 
 def _log_table(eps):
     """Integer log-probability (units of 1/SCALE nat) of every quantised probability k/QUANT."""
+    if not eps > 0:
+        raise ValueError("eps must be positive")
     x = np.log(np.maximum(np.arange(QUANT + 1) / QUANT, eps)) * SCALE
-    if np.abs(x - np.floor(x) - 0.5).min() < _TABLE_MARGIN:
+    if not np.abs(x - np.floor(x) - 0.5).min() >= _TABLE_MARGIN:
         raise RuntimeError("log table entry on a rounding boundary; change SCALE")
     return np.rint(x)
 
 
 def _units(cost):
     """A cost in nats as an exact integer number of 1/SCALE units (float64)."""
-    return float(np.rint(float(cost) * SCALE))
+    u = float(np.rint(float(cost) * SCALE))
+    if not abs(u) < 2.0 ** 40:          # keeps every path score far inside the exact range 2**53
+        raise ValueError("cost {} is outside the range the exact decoder supports".format(cost))
+    return u
 
 
 def _scores(prob, eps, prior, prior_power, dead_bias):
@@ -352,7 +357,9 @@ def decode(prob, blocks, n_total, switch_cost=8.0, to_dead_cost=8.0, from_dead_c
     constant to the dead-ball log-emission. All tuned on external games only.
 
     Probabilities are quantised to 4 decimals and all scores are exact integers (see QUANT / SCALE
-    at the top of this module), so the result is identical on every platform.
+    at the top of this module), so the result is identical on every platform. (`prior` and
+    `boundary_beta`, which the pipeline does not use, go through the platform's log before they
+    are rounded and are outside that guarantee.)
     """
     kx = int(round(turnover_exit_s * fps))
     kd = int(round(min_dead_s * fps))
@@ -362,6 +369,8 @@ def decode(prob, blocks, n_total, switch_cost=8.0, to_dead_cost=8.0, from_dead_c
         out = np.full(n_total, X, dtype=np.int8)
         logp = _scores(prob, eps, prior, prior_power, dead_bias)
         for a, b in blocks:
+            if b <= a:
+                continue
             sw = np.full(b - a, float(switch_cost))
             if boundary_beta > 0:
                 z = posterior_jump(prob[a:b])
@@ -376,6 +385,8 @@ def decode(prob, blocks, n_total, switch_cost=8.0, to_dead_cost=8.0, from_dead_c
     k = int(round(min_turnover_s * fps))
     trans = np.rint(transition_matrix(switch_cost, to_dead_cost, from_dead_cost) * SCALE)
     for a, b in blocks:
+        if b <= a:
+            continue
         seg = np.ascontiguousarray(logp[a:b])
         if k > 0:
             out[a:b] = _viterbi_min_turnover(seg, k, _units(switch_cost), _units(to_dead_cost),

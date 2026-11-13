@@ -1,12 +1,20 @@
 # Pinned environment for the team solution (solution/). Python 3.12.
 #
 #   uv venv .venv --python 3.12
-#   uv pip install --python .venv -r requirements-solution.txt \
-#       --extra-index-url https://download.pytorch.org/whl/cpu
+#   uv pip install --python .venv -r requirements-solution.txt -c requirements-solution.lock.txt
 #
-# The submission is produced on CPU (python -m solution.predict), so the CPU build of torch is
-# all that is needed and gives the same file on any machine. A CUDA build only speeds up
-# retraining the sequence models (solution/seq.py).
+# or with plain pip (inside a Python 3.12 virtual environment):
+#   python -m pip install -r requirements-solution.txt -c requirements-solution.lock.txt
+#
+# Everything comes from PyPI; the lock file pins the indirect dependencies too. Do not add the
+# PyTorch download index with --extra-index-url: uv gives that index priority for every package
+# it also hosts, and the install fails when it hosts one of the pins below at another version.
+#
+# The submission is produced on CPU (python -m solution.predict) whichever build of torch is
+# installed, and is the same file with either. On Linux, where PyPI's torch bundles the CUDA
+# runtime (a large download), the CPU-only wheel can be installed first, then the line above:
+#   uv pip install --python .venv --no-deps torch==2.11.0 --index-url https://download.pytorch.org/whl/cpu
+# A CUDA build only speeds up retraining the sequence models (solution/seq.py).
 numpy==2.5.4
 pandas==3.1.1
 scipy==1.18.1

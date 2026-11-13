@@ -23,7 +23,7 @@ if ROOT not in sys.path:
 
 from games import GAME, GAMES  # noqa: E402
 from solution.atd import load_atd  # noqa: E402
-from solution.decode import decode  # noqa: E402
+from solution.decode import QUANT, decode  # noqa: E402
 from solution.features import compute_features  # noqa: E402
 from solution.match import LABEL_CHARS, H, A, D, X  # noqa: E402
 
@@ -95,13 +95,19 @@ def member_probs(cfg, m, F, device="cpu"):
     return parts
 
 
+def blended(parts):
+    """The ensemble's float64 probabilities before they are put on the decoder's grid."""
+    from solution.ensemble import blend
+    return blend(parts, dtype=np.float64) if len(parts) > 1 else parts[0][0]
+
+
 def labels_from(parts, cfg, m):
     """Blend the members, put the result on the decoder's 1e-4 grid and decode. Returns the label
     code of every video frame, the blended probabilities and the decoder parameters."""
-    from solution.ensemble import blend
-    prob = blend(parts, dtype=np.float64) if len(parts) > 1 else parts[0][0]
     nd = int(cfg.get("round", 4))
-    prob = np.round(prob, nd)        # the 1e-4 grid the decoder works on (solution/decode.py)
+    if 10 ** nd != QUANT:
+        raise SystemExit("pipeline 'round' must match the decoder's grid (QUANT in decode.py)")
+    prob = np.round(blended(parts), nd)   # the 1e-4 grid the decoder works on (solution/decode.py)
     if any(cfg.get("fusion", {}).values()):
         raise SystemExit("fusion of broadcast / Smart Tagging evidence is not part of this pipeline")
     dec = json.load(open(os.path.join(MODEL_DIR, cfg["decoder"])))["params"]
@@ -151,6 +157,8 @@ def main():
                                                     "pipeline.json)")
     ap.add_argument("--device", default="cpu", help="cpu (reproducible) or cuda")
     a = ap.parse_args()
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(errors="replace")     # a team name the console cannot print
     cfg = json.load(open(a.config)) if a.config else None
     run(a.name, cfg, device=a.device)
     sys.stdout.flush()

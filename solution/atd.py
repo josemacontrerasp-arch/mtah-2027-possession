@@ -67,7 +67,9 @@ def parse_meta(meta_path):
 
 def parse_raw(raw_path, n_slots):
     """(frame_id (n,), players (n, P, 3), ball (n, 3)) as float32 with NaN for missing."""
-    with open(raw_path, "r") as fh:
+    # digits and separators only; an explicit byte-for-byte decoding keeps the default text
+    # encoding of the operating system out of it
+    with open(raw_path, "r", encoding="latin-1") as fh:
         text = fh.read()
     text = text.replace(":", ",").replace(";", ",")
     n_cols = 1 + 3 * n_slots + 3
