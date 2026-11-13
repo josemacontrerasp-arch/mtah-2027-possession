@@ -2,6 +2,7 @@
 clean evaluation environments only. External games only; the provided match plays no part.
 
     python -m solution.clean_select <name> <oof_rnd> <oof_rnd2> <oof_rndh> [--grid JSON] [--save F]
+    python -m solution.clean_select --compare <candidate name> <incumbent name>   # paired criteria
 
 For every decoder setting, spellF1 is computed per environment and per match. For each held-out
 match, the setting with the best mean over the other six matches (all environments) is chosen and
@@ -83,7 +84,47 @@ def run(subs, grid, workers=16, cands=None):
                 chosen=chosen, insample=insample)
 
 
+def nested_by_env(table):
+    """(E, M) nested scores: for each held-out match, the setting chosen on the other six."""
+    per_match = table.mean(axis=1)
+    n_match = table.shape[2]
+    out = np.zeros(table.shape[1:])
+    for i in range(n_match):
+        others = [j for j in range(n_match) if j != i]
+        best = int(np.argmax(per_match[:, others].mean(axis=1)))
+        out[:, i] = table[best, :, i]
+    return out
+
+
+def compare(cand, inc, min_gain=0.005, min_wins=5, max_env_drop=0.003):
+    """The paired criteria of PREREGISTRATION.md rule 5 (candidate against incumbent), from the
+    tables two earlier runs of this script saved. Prints every number the rule uses."""
+    from solution.external_dfl import CACHE_DIR
+    a = nested_by_env(np.load(os.path.join(CACHE_DIR, "select_{}.npz".format(cand)))["table"])
+    b = nested_by_env(np.load(os.path.join(CACHE_DIR, "select_{}.npz".format(inc)))["table"])
+    ma, mb = a.mean(axis=0), b.mean(axis=0)            # per match, averaged over environments
+    gain = float(ma.mean() - mb.mean())
+    wins = int((ma > mb).sum())
+    env_delta = a.mean(axis=1) - b.mean(axis=1)
+    print("nested clean spellF1: {} {:.4f}   {} {:.4f}   gain {:+.4f}".format(
+        cand, ma.mean(), inc, mb.mean(), gain))
+    print("  per match  {}: {}".format(cand, np.round(ma, 3).tolist()))
+    print("  per match  {}: {}".format(inc, np.round(mb, 3).tolist()))
+    print("  per environment (rnd, rnd2, rndh)  {}: {}   {}: {}   delta {}".format(
+        cand, np.round(a.mean(axis=1), 4).tolist(), inc, np.round(b.mean(axis=1), 4).tolist(),
+        np.round(env_delta, 4).tolist()))
+    c1, c2, c3 = gain >= min_gain, wins >= min_wins, bool(env_delta.min() >= -max_env_drop)
+    print("  gain >= {:+.3f}: {}   |   better on >= {} of {} matches: {} ({})   |   no environment "
+          "drops by more than {:.3f}: {}".format(min_gain, c1, min_wins, len(ma), c2, wins,
+                                                  max_env_drop, c3))
+    print("  => {}".format("ADOPT the candidate" if (c1 and c2 and c3) else "KEEP the incumbent"))
+    return c1 and c2 and c3
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--compare":
+        compare(sys.argv[2], sys.argv[3])
+        return
     ap = argparse.ArgumentParser()
     ap.add_argument("name")
     ap.add_argument("subs", nargs="*", help="three OOF dirs (rnd rnd2 rndh) for one ensemble")
