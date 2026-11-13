@@ -44,6 +44,13 @@ def _nan_window_mean(x, lo, hi):
     return out
 
 
+def _norm2(a, b):
+    """sqrt(a^2 + b^2) from correctly rounded operations only (multiply, add, square root).
+    np.hypot goes through the platform's maths library, whose last bit differs between
+    operating systems; these three operations give the same bits everywhere."""
+    return np.sqrt(a * a + b * b)
+
+
 def _interp_short_gaps(xy, max_gap):
     """Linear bridge of NaN runs no longer than max_gap that have data on both sides."""
     out = xy.copy()
@@ -99,7 +106,7 @@ def _turnover_features(f, bxy_raw, bxy, pxy, team, seen, vx, vy, n, fps):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         path = _interp_short_gaps(bxy_raw, LONG_GAP)
-        dist_p = np.hypot(pxy[..., 0] - path[:, None, 0], pxy[..., 1] - path[:, None, 1])
+        dist_p = _norm2(pxy[..., 0] - path[:, None, 0], pxy[..., 1] - path[:, None, 1])
         sign_p, d_p = _team_sign_nearest(dist_p, team)
         f["path_sign"] = np.where(d_p < 3.0, sign_p, np.where(np.isfinite(d_p), 0.0, np.nan))
         dh = np.nanmin(np.where(team[None, :] == 0, dist_p, np.nan), axis=1)
@@ -107,7 +114,7 @@ def _turnover_features(f, bxy_raw, bxy, pxy, team, seen, vx, vy, n, fps):
         f["path_d_diff"] = np.clip(dh - da, -30, 30)
         f["in_long_gap"] = (np.isfinite(path[:, 0]) & ~seen).astype(np.float64)
 
-        dist = np.hypot(pxy[..., 0] - bxy[:, None, 0], pxy[..., 1] - bxy[:, None, 1])
+        dist = _norm2(pxy[..., 0] - bxy[:, None, 0], pxy[..., 1] - bxy[:, None, 1])
         sign_b, d_b = _team_sign_nearest(dist, team)
         for r, key in ((1.0, "ctrl1_sign"), (2.5, "ctrl25_sign")):
             v = np.where(seen, 0.0, np.nan)
@@ -116,7 +123,7 @@ def _turnover_features(f, bxy_raw, bxy, pxy, team, seen, vx, vy, n, fps):
             f[key] = v
 
         # pass receiver: first player ahead of a moving ball inside a cone
-        speed = np.hypot(vx, vy)
+        speed = _norm2(vx, vy)
         moving = seen & (speed > 4.0)
         ux, uy = vx / np.maximum(speed, 1e-6), vy / np.maximum(speed, 1e-6)
         rx = pxy[..., 0] - bxy[:, None, 0]
@@ -134,7 +141,7 @@ def _turnover_features(f, bxy_raw, bxy, pxy, team, seen, vx, vy, n, fps):
 
         # time to the ball's position 0.6 s ahead, players capped at 7 m/s
         fut = bxy + np.stack([vx, vy], axis=1) * 0.6
-        dt = np.hypot(pxy[..., 0] - fut[:, None, 0], pxy[..., 1] - fut[:, None, 1]) / 7.0
+        dt = _norm2(pxy[..., 0] - fut[:, None, 0], pxy[..., 1] - fut[:, None, 1]) / 7.0
         th = np.nanmin(np.where(team[None, :] == 0, dt, np.nan), axis=1)
         ta = np.nanmin(np.where(team[None, :] == 1, dt, np.nan), axis=1)
         f["ttb_diff"] = np.clip(th - ta, -5, 5)
@@ -173,7 +180,7 @@ def _block_features(m: Match, start, stop, direction):
     v[1:-1] = (bxy[2:] - bxy[:-2]) * (fps / 2.0)
     vx = _nan_window_mean(v[:, 0], -2, 2)
     vy = _nan_window_mean(v[:, 1], -2, 2)
-    bspeed = np.hypot(vx, vy)
+    bspeed = _norm2(vx, vy)
     bspeed[~bok] = np.nan
     f["b_speed"] = bspeed
     f["b_vx"] = vx
@@ -184,7 +191,7 @@ def _block_features(m: Match, start, stop, direction):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", category=RuntimeWarning)
         # Distances from every slot to the (bridged) ball.
-        dist = np.hypot(pxy[..., 0] - bxy[:, None, 0], pxy[..., 1] - bxy[:, None, 1])
+        dist = _norm2(pxy[..., 0] - bxy[:, None, 0], pxy[..., 1] - bxy[:, None, 1])
         dist_h = np.where(team[None, :] == 0, dist, np.nan)
         dist_a = np.where(team[None, :] == 1, dist, np.nan)
         dh = np.nanmin(dist_h, axis=1)
@@ -214,7 +221,7 @@ def _block_features(m: Match, start, stop, direction):
         pv = np.full((n, 2), np.nan)
         dp = pxy[2:] - pxy[:-2]                     # row k <-> frame k + 1
         pv[1:-1] = dp[np.arange(n - 2), slot[1:-1]] * (fps / 2.0)
-        rel = np.hypot(vx - pv[:, 0], vy - pv[:, 1])
+        rel = _norm2(vx - pv[:, 0], vy - pv[:, 1])
         rel[~valid_any] = np.nan
         f["rel_speed_near"] = np.clip(rel, 0, 40)
         near_s = ps[np.arange(n), slot]

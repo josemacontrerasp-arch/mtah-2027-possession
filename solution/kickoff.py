@@ -91,8 +91,8 @@ def detect(m, start, stop):
     kick = a + e - 1                      # last frame of the formation
     # refine with the ball: first clear movement within +/- REFINE frames of the run end
     lo, hi = max(0, kick - REFINE), min(m.n - 1, kick + REFINE)
-    bx = m.ball_xy[lo:hi + 1]
-    sp = np.hypot(*np.diff(bx, axis=0).T) * m.fps
+    d = np.diff(m.ball_xy[lo:hi + 1].astype(np.float64), axis=0)
+    sp = np.sqrt(d[:, 0] * d[:, 0] + d[:, 1] * d[:, 1]) * m.fps   # no libm call: same bits everywhere
     moving = np.flatnonzero(np.nan_to_num(sp, nan=0.0) > KICK_SPEED)
     if len(moving):
         kick = lo + int(moving[0])

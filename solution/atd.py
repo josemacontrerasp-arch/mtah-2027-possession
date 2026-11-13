@@ -78,8 +78,12 @@ def parse_raw(raw_path, n_slots):
         raise ValueError("raw file has {} columns, expected {}".format(table.shape[1], n_cols))
     values = table.values
     frame_id = values[:, 0].astype(np.int64)
-    players = values[:, 1:1 + 3 * n_slots].reshape(-1, n_slots, 3).astype(np.float32)
-    ball = values[:, 1 + 3 * n_slots:].astype(np.float32)
+    # pandas hands back column-major memory; make the arrays row-major (C-contiguous) so a fresh
+    # parse and a load from the cache have the same layout. NumPy picks its summation order from
+    # the layout, so without this the two could differ in the last bit of a few features.
+    players = np.ascontiguousarray(values[:, 1:1 + 3 * n_slots].reshape(-1, n_slots, 3),
+                                   dtype=np.float32)
+    ball = np.ascontiguousarray(values[:, 1 + 3 * n_slots:], dtype=np.float32)
     return frame_id, players, ball
 
 
@@ -96,7 +100,8 @@ def load_atd(source="tactical", use_cache=True, game=GAME, kickoff="detect"):
 
     if use_cache and os.path.isfile(cache):
         z = np.load(cache)
-        frame_id, players, ball, team = z["frame_id"], z["players"], z["ball"], z["team"]
+        frame_id, team = z["frame_id"], z["team"]
+        players, ball = np.ascontiguousarray(z["players"]), np.ascontiguousarray(z["ball"])
     else:
         team, _, _, _ = parse_meta(paths["atd_meta"])
         frame_id, players, ball = parse_raw(paths["atd_raw"], len(team))
