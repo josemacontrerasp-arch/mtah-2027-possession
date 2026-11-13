@@ -35,19 +35,20 @@ def lgbm_probs(F, n, model_file="frame_lgbm.txt", features_file="frame_lgbm_feat
     import lightgbm as lgb
     model = lgb.Booster(model_file=os.path.join(MODEL_DIR, model_file))
     cols = json.load(open(os.path.join(MODEL_DIR, features_file)))
-    prob = np.full((n, 3), np.nan, np.float32)
-    prob[F.index.values] = model.predict(F[cols]).astype(np.float32)
+    prob = np.full((n, 3), np.nan, np.float64)
+    prob[F.index.values] = model.predict(F[cols])
     return prob
 
 
 def seq_probs(F, m, name, device="cpu"):
-    """GRU probabilities on CPU with a single thread, so the arithmetic (and its rounding) does not
-    depend on how many cores the machine has."""
+    """GRU probabilities on CPU, single thread, in float64: rounding noise then sits near 1e-15,
+    far below the 1e-4 grid the decoder quantises to, whatever the cores, instruction set or
+    maths library of the machine."""
     import torch
     torch.set_num_threads(1)
     from solution.seq import load_final, predict_full
     model, norm = load_final(device, name)
-    return predict_full(model, norm, F, m.half, m.n, device=device)
+    return predict_full(model, norm, F, m.half, m.n, device=device, double=True)
 
 
 def load_pipeline():
@@ -81,11 +82,8 @@ def describe(codes, half):
     return out
 
 
-def run(name, cfg=None, validate=True, device="cpu"):
-    cfg = cfg or load_pipeline()
-    m = load_atd("tactical")
-    F = compute_features(m)
-    from solution.ensemble import blend
+def member_probs(cfg, m, F, device="cpu"):
+    """[(float64 probabilities, weight)] for every ensemble member of the pipeline configuration."""
     parts = []
     for mem in cfg["members"]:
         if mem["kind"] == "lgbm":
@@ -94,14 +92,19 @@ def run(name, cfg=None, validate=True, device="cpu"):
         else:
             p = seq_probs(F, m, mem["name"], device=device)
         parts.append((p.astype(np.float64), float(mem["weight"])))
-    prob = blend(parts) if len(parts) > 1 else parts[0][0].astype(np.float32)
-    print("members", [(mem.get("name", mem["kind"]), mem["weight"]) for mem in cfg["members"]])
+    return parts
+
+
+def labels_from(parts, cfg, m):
+    """Blend the members, put the result on the decoder's 1e-4 grid and decode. Returns the label
+    code of every video frame, the blended probabilities and the decoder parameters."""
+    from solution.ensemble import blend
+    prob = blend(parts, dtype=np.float64) if len(parts) > 1 else parts[0][0]
     nd = int(cfg.get("round", 4))
-    prob = np.round(prob, nd)        # floating-point noise must not change the file
+    prob = np.round(prob, nd)        # the 1e-4 grid the decoder works on (solution/decode.py)
     if any(cfg.get("fusion", {}).values()):
         raise SystemExit("fusion of broadcast / Smart Tagging evidence is not part of this pipeline")
-    dec_name = cfg["decoder"]
-    dec = json.load(open(os.path.join(MODEL_DIR, dec_name)))["params"]
+    dec = json.load(open(os.path.join(MODEL_DIR, cfg["decoder"])))["params"]
 
     # Each half's kick-off is detected from the tracking (solution/kickoff.py): frames of the play
     # window before it are a stoppage, and the HMM runs from the kick. No frame number of this
@@ -118,6 +121,17 @@ def run(name, cfg=None, validate=True, device="cpu"):
     codes[m.half == 0] = X
     if len(codes) != GAMES[GAME]["n_video_frames"]:
         raise SystemExit("row count mismatch")
+    return codes, prob, dec
+
+
+def run(name, cfg=None, validate=True, device="cpu"):
+    cfg = cfg or load_pipeline()
+    m = load_atd("tactical")
+    F = compute_features(m)
+    parts = member_probs(cfg, m, F, device=device)
+    print("members", [(mem.get("name", mem["kind"]), mem["weight"]) for mem in cfg["members"]])
+    codes, prob, dec = labels_from(parts, cfg, m)
+    dec_name = cfg["decoder"]
     path = os.path.join(OUT_DIR, "{}.csv".format(name))
     write_submission(path, codes)
     np.save(os.path.join(OUT_DIR, "{}_prob.npy".format(name)), prob)

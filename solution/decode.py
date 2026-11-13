@@ -18,6 +18,41 @@ except ImportError:  # pragma: no cover
 
 H, A, D, X = 0, 1, 2, 3
 
+# Exact arithmetic. Probabilities are quantised to 1/QUANT, and log-probabilities and costs to
+# 1/SCALE nat, held as integer-valued float64. Every score in the Viterbi recursions below is then
+# an exact integer (far below 2**53), so sums carry no rounding error: two paths either tie exactly
+# or differ by a whole unit, and ties are broken by the fixed order of the comparisons. The decoded
+# path is therefore a pure function of the quantised probabilities -- it does not depend on the
+# platform's log implementation, SIMD width or summation order.
+QUANT = 10_000
+SCALE = 1_000_000
+_TABLE_MARGIN = 1e-6     # units; a platform's log would need an error of ~500 ulp to change the table
+
+
+def _log_table(eps):
+    """Integer log-probability (units of 1/SCALE nat) of every quantised probability k/QUANT."""
+    x = np.log(np.maximum(np.arange(QUANT + 1) / QUANT, eps)) * SCALE
+    if np.abs(x - np.floor(x) - 0.5).min() < _TABLE_MARGIN:
+        raise RuntimeError("log table entry on a rounding boundary; change SCALE")
+    return np.rint(x)
+
+
+def _units(cost):
+    """A cost in nats as an exact integer number of 1/SCALE units (float64)."""
+    return float(np.rint(float(cost) * SCALE))
+
+
+def _scores(prob, eps, prior, prior_power, dead_bias):
+    """Integer-valued float64 log-scores (n, 3) from probabilities; NaN rows count as uniform."""
+    p = np.nan_to_num(np.asarray(prob, dtype=np.float64), nan=1.0 / 3)
+    q = np.rint(np.clip(p, 0.0, 1.0) * QUANT).astype(np.int64)
+    logp = _log_table(eps)[q]
+    if prior is not None and prior_power:
+        logp = logp - np.rint(prior_power * np.log(np.asarray(prior, np.float64)) * SCALE)[None, :]
+    if dead_bias:
+        logp[:, D] += _units(dead_bias)
+    return logp
+
 
 @njit(cache=True)
 def _viterbi(logp, trans):
@@ -315,6 +350,9 @@ def decode(prob, blocks, n_total, switch_cost=8.0, to_dead_cost=8.0, from_dead_c
     opponent. turnover_exit_s > 0 lets such a possession end in a stoppage once it has lasted that
     long. min_dead_s > 0 gives stoppages entered from play a minimum length. dead_bias adds a
     constant to the dead-ball log-emission. All tuned on external games only.
+
+    Probabilities are quantised to 4 decimals and all scores are exact integers (see QUANT / SCALE
+    at the top of this module), so the result is identical on every platform.
     """
     kx = int(round(turnover_exit_s * fps))
     kd = int(round(min_dead_s * fps))
@@ -322,33 +360,26 @@ def decode(prob, blocks, n_total, switch_cost=8.0, to_dead_cost=8.0, from_dead_c
         k = max(1, int(round(min_turnover_s * fps)))
         kx = min(kx, k)
         out = np.full(n_total, X, dtype=np.int8)
-        logp = np.log(np.clip(prob, eps, 1.0))
-        if prior is not None and prior_power:
-            logp = logp - prior_power * np.log(np.asarray(prior))[None, :]
-        if dead_bias:
-            logp[:, D] += dead_bias
+        logp = _scores(prob, eps, prior, prior_power, dead_bias)
         for a, b in blocks:
             sw = np.full(b - a, float(switch_cost))
             if boundary_beta > 0:
                 z = posterior_jump(prob[a:b])
                 z = np.clip(z - np.median(z), 0.0, boundary_cap)
                 sw = np.maximum(0.5, sw - boundary_beta * z)
-            out[a:b] = _viterbi_struct(np.ascontiguousarray(logp[a:b]), k, kx, kd, sw,
-                                       float(to_dead_cost), float(from_dead_cost))
+            out[a:b] = _viterbi_struct(np.ascontiguousarray(logp[a:b]), k, kx, kd,
+                                       np.rint(sw * SCALE), _units(to_dead_cost),
+                                       _units(from_dead_cost))
         return out
     out = np.full(n_total, X, dtype=np.int8)
-    logp = np.log(np.clip(prob, eps, 1.0))
-    if prior is not None and prior_power:
-        logp = logp - prior_power * np.log(np.asarray(prior))[None, :]
-    if dead_bias:
-        logp[:, D] += dead_bias
+    logp = _scores(prob, eps, prior, prior_power, dead_bias)
     k = int(round(min_turnover_s * fps))
-    trans = transition_matrix(switch_cost, to_dead_cost, from_dead_cost)
+    trans = np.rint(transition_matrix(switch_cost, to_dead_cost, from_dead_cost) * SCALE)
     for a, b in blocks:
         seg = np.ascontiguousarray(logp[a:b])
         if k > 0:
-            out[a:b] = _viterbi_min_turnover(seg, k, float(switch_cost), float(to_dead_cost),
-                                             float(from_dead_cost))
+            out[a:b] = _viterbi_min_turnover(seg, k, _units(switch_cost), _units(to_dead_cost),
+                                             _units(from_dead_cost))
         else:
             out[a:b] = _viterbi(seg, trans)
     return out

@@ -68,11 +68,11 @@ class Norm:
         self.mask_cols = [i for i in range(len(self.cols)) if np.isnan(x[:, i]).mean() > 0.01]
         return self
 
-    def transform(self, df):
+    def transform(self, df, dtype=np.float32):
         x = df[self.cols].values.astype(np.float64)
-        miss = np.isnan(x[:, self.mask_cols]).astype(np.float32)
+        miss = np.isnan(x[:, self.mask_cols]).astype(dtype)
         z = (x - self.mu) / self.sd
-        z = np.clip(np.nan_to_num(z, nan=0.0), -6, 6).astype(np.float32)
+        z = np.clip(np.nan_to_num(z, nan=0.0), -6, 6).astype(dtype)
         return np.concatenate([z, miss], axis=1)
 
     def state(self):
@@ -174,11 +174,19 @@ def fit(seqs, norm, device="cuda", epochs=EPOCHS, log=True):
     return model
 
 
-def predict_full(model, norm, F, half, n_total, device="cuda"):
+def predict_full(model, norm, F, half, n_total, device="cuda", double=False):
     """Probabilities at 25 fps: run the GRU on each half at 5 Hz (all 5 phase offsets, averaged)
-    and interpolate back to every frame."""
+    and interpolate back to every frame.
+
+    double=True runs the network in float64 (the submission does). The trained float32 weights
+    are widened exactly; rounding noise then sits near 1e-15 instead of 1e-7, far below the 1e-4
+    grid the decoder quantises to, so the result does not depend on the CPU's instruction set or
+    on the maths library behind the matrix products."""
     torch = _torch()
-    prob = np.full((n_total, 3), np.nan, np.float32)
+    dt = np.float64 if double else np.float32
+    if double:
+        model = model.double()
+    prob = np.full((n_total, 3), np.nan, dt)
     idx_all = F.index.values
     for h in (1, 2):
         sel = F["half"].values == h
@@ -190,13 +198,13 @@ def predict_full(model, norm, F, half, n_total, device="cuda"):
         cnt = np.zeros(len(frames))
         for off in range(STEP):
             sub = np.arange(off, len(frames), STEP)
-            x = torch.from_numpy(norm.transform(Fh.iloc[sub])[None]).to(device)
+            x = torch.from_numpy(norm.transform(Fh.iloc[sub], dt)[None]).to(device)
             with torch.no_grad():
                 p = torch.softmax(model(x)[0], dim=-1).cpu().numpy()
             for c in range(3):
                 acc[:, c] += np.interp(np.arange(len(frames)), sub, p[:, c])
             cnt += 1
-        prob[frames] = (acc / cnt[:, None]).astype(np.float32)
+        prob[frames] = (acc / cnt[:, None]).astype(dt)
     return prob
 
 

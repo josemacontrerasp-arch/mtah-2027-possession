@@ -14,8 +14,9 @@ import numpy as np
 from solution.external_dfl import CACHE_DIR, MATCH_IDS
 
 
-def blend(parts, pooling="linear"):
+def blend(parts, pooling="linear", dtype=np.float32):
     """parts: list of (prob array, weight); NaN-aware weighted pool, renormalised per row.
+    dtype: float32 for the out-of-fold files, float64 for the submission (solution/predict.py).
 
     pooling="linear" is a weighted mean of probabilities; "log" a weighted geometric mean
     (log-linear pooling), which rewards agreement between members."""
@@ -30,7 +31,7 @@ def blend(parts, pooling="linear"):
         lg = np.where(wsum > 0, acc / np.maximum(wsum, 1e-12), np.nan)
         lg = lg - np.nanmax(lg, axis=1, keepdims=True)
         out = np.exp(lg)
-        return (out / np.nansum(out, axis=1, keepdims=True)).astype(np.float32)
+        return (out / np.nansum(out, axis=1, keepdims=True)).astype(dtype)
     acc, wsum = None, None
     for p, w in parts:
         ok = np.isfinite(p[:, :1])
@@ -39,7 +40,7 @@ def blend(parts, pooling="linear"):
         ws = ok.astype(np.float64) * w
         wsum = ws if wsum is None else wsum + ws
     out = np.where(wsum > 0, acc / np.maximum(wsum, 1e-12), np.nan)
-    return (out / np.nansum(out, axis=1, keepdims=True)).astype(np.float32)
+    return (out / np.nansum(out, axis=1, keepdims=True)).astype(dtype)
 
 
 def main(out, specs, pooling="linear"):
