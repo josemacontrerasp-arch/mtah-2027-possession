@@ -225,9 +225,9 @@ act at the 1e-15 level, behind the grid.
 
 Also checked: environments built from scratch with `uv` and with `pip`; a fresh clone with every
 cache rebuilt from the raw files (`solution/preflight.py` repeats this); six emulated CPU
-configurations, the same file every time. What we could not run is other hardware — only x86-64
-Windows — so `python -m solution.repro_check --fresh-cache` checks any machine in one command.
-On macOS, LightGBM needs `brew install libomp`.
+configurations, the same file every time. The match itself never leaves our machine (x86-64
+Windows); on any other, `python -m solution.repro_check --fresh-cache` checks the SHA-256 in one
+command. On macOS, LightGBM needs `brew install libomp`.
 
 **Without the match data**, `python -m solution.selftest` (about 20 s) runs the whole chain —
 kick-off detection, features, the five models, blending, grid and decoder — on a synthetic match
@@ -235,7 +235,9 @@ built from a fixed seed with exactly rounded arithmetic, and compares every stag
 recorded on our machine (`models/selftest_reference.json`): features, LightGBM scores, grid values
 and labels must be bit-identical, GRU probabilities equal within 1e-12.
 `.github/workflows/selftest.yml` installs the environment as above and runs it on Linux, macOS
-and Windows.
+and Windows. On GitHub's machines — Linux x86-64, macOS on Apple Silicon (arm64) and Windows
+Server x86-64 — kick-offs, features, LightGBM scores, grid values and labels were bit-identical
+to ours and the GRU probabilities differed by at most 2.0e-15 (13 Nov 2026).
 
 Retraining from external data (optional). LightGBM training is bit-for-bit deterministic:
 `solution.train final` rebuilds the committed model file exactly (checked). GPU GRU training is

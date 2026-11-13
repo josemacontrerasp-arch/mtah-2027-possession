@@ -14,6 +14,10 @@
 > .venv/bin/python -m solution.repro_check --fresh-cache          # compares with the recorded SHA-256
 > ```
 >
+> Without the match data, `.venv/bin/python -m solution.selftest` checks in about 20 seconds that a
+> machine computes exactly what ours did, on a synthetic match (run on Linux, macOS and Windows by
+> `.github/workflows/selftest.yml`).
+>
 > Nothing is trained, tuned or fitted on the provided match: models are trained on external games
 > (DFL open data, CC BY 4.0) under randomised simulated trackers, and selection rules were
 > pre-registered (`solution/PREREGISTRATION.md`). Trained models are committed in `solution/models/`.
