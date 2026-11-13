@@ -325,7 +325,9 @@ def check_clone(url, pushed):
     tmp = tempfile.mkdtemp(prefix="mtah_clone_")
     try:
         repo = os.path.join(tmp, "repo")
+        # stored credentials only: never wait for a sign-in prompt
         code, _, se = run(["git", "clone", "--quiet", "--depth", "1", url, repo], cwd=tmp,
+                          env={"GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never"},
                           timeout=600)
         if code != 0:
             report("FAIL", item, "git clone failed: " + (se.strip().splitlines() or ["?"])[-1][:120])

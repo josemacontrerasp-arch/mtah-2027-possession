@@ -125,8 +125,6 @@ def labels_from(parts, cfg, m):
     for a, b in blocks:
         codes[a:b] = dec_codes[a:b]
     codes[m.half == 0] = X
-    if len(codes) != GAMES[GAME]["n_video_frames"]:
-        raise SystemExit("row count mismatch")
     return codes, prob, dec
 
 
@@ -137,6 +135,8 @@ def run(name, cfg=None, validate=True, device="cpu"):
     parts = member_probs(cfg, m, F, device=device)
     print("members", [(mem.get("name", mem["kind"]), mem["weight"]) for mem in cfg["members"]])
     codes, prob, dec = labels_from(parts, cfg, m)
+    if len(codes) != GAMES[GAME]["n_video_frames"]:
+        raise SystemExit("row count mismatch")
     dec_name = cfg["decoder"]
     path = os.path.join(OUT_DIR, "{}.csv".format(name))
     write_submission(path, codes)

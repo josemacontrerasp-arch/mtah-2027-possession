@@ -229,6 +229,14 @@ configurations, the same file every time. What we could not run is other hardwar
 Windows — so `python -m solution.repro_check --fresh-cache` checks any machine in one command.
 On macOS, LightGBM needs `brew install libomp`.
 
+**Without the match data**, `python -m solution.selftest` (about 20 s) runs the whole chain —
+kick-off detection, features, the five models, blending, grid and decoder — on a synthetic match
+built from a fixed seed with exactly rounded arithmetic, and compares every stage with the values
+recorded on our machine (`models/selftest_reference.json`): features, LightGBM scores, grid values
+and labels must be bit-identical, GRU probabilities equal within 1e-12.
+`.github/workflows/selftest.yml` installs the environment as above and runs it on Linux, macOS
+and Windows.
+
 Retraining from external data (optional). LightGBM training is bit-for-bit deterministic:
 `solution.train final` rebuilds the committed model file exactly (checked). GPU GRU training is
 not, which is why trained weights are committed:
