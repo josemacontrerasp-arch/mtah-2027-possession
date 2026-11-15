@@ -90,3 +90,43 @@ same clean environments, same nested procedure.
 Rule 4 is unchanged: on the provided match a new final version gets runtime sanity checks only.
 The public-window pipeline check was spent on v6 and is **not** repeated for v7 or v7b — their
 prediction code is the v6 code; only trained weights and the selected decoder setting differ.
+
+---
+
+## Addendum, 15 Nov 2026 — more labelled external data (v8), amending rule 7
+
+*Written and committed before any v8 number was computed.*
+
+**Why.** Rule 7 closed the search on 14 Nov. On 15 Nov the team decided to test one more
+candidate, which changes the training data and nothing else: SkillCorner's open data (20 A-League
+2024/25 matches, MIT licence). Its tracking is a real automatic tracker (broadcast video, 10 fps),
+so its gaps are real tracker failures rather than simulated ones, and its phases of play give
+team possession. The descriptive statistics of these labels were looked at before this addendum
+(per match: label shares, about 100 stoppages, spell counts and lengths); no model was trained.
+
+**Candidate v8.** Identical to v6 — same features, model hyper-parameters and training settings,
+the same four shared DFL trackers (seeds 11–14), ensemble family, decoder grid, clean
+environments and nested procedure — except that every fold, and the final models, also train on
+the 20 SkillCorner matches (`solution/external_skillcorner.py`):
+
+* **tracking:** SkillCorner detections only (its extrapolated positions are dropped), resampled to
+  25 fps by linear interpolation between two consecutive detections; speeds from position
+  differences; coordinates moved to the corner origin;
+* **labels:** a frame inside a phase of play belongs to that phase's team in possession; a frame of
+  a period outside every phase is dead ball (SkillCorner: phases exist only while the ball is in
+  play); frames before a period's first phase or after its last are unlabelled; then the same
+  controlled-possession relabel as the DFL labels (2 s, `solution/relabel.py`);
+* **copies:** each match in both orientations and two 5 Hz frame offsets (seeds 11 and 12), with
+  no simulated degradation — the broadcast tracker's own gaps are the degradation;
+* SkillCorner matches are **never evaluated**: the nested score is computed on the same 7 DFL
+  matches and three clean environments as v6, so the comparison is paired.
+
+8. **v6 → v8.** The three criteria of rule 5, with v8 in place of v7: v8's nested clean score is
+   at least v6's + 0.005 (v6: 0.7736); v8 is better on at least 5 of the 7 matches; no clean
+   environment drops by more than 0.003. Otherwise v6 stays the submission.
+9. **Rule 7, amended.** v8 is the only exception: no other variant (other copy counts, weights,
+   label rules or SkillCorner subsets) is tried. If rule 8 adopts v8 but its final models, file
+   and checks (byte-identical regeneration, the three-system self-test, preflight) are not all
+   complete by 17 Nov 2026, 12:00 CET, v6 is submitted.
+
+Rule 4 is unchanged; as for v7, the public-window pipeline check is not repeated for v8.
