@@ -23,6 +23,7 @@ import possession_metrics as pm  # noqa: E402  (the official metric code)
 
 from solution.degrade import degrade, swap_teams  # noqa: E402
 from solution.external_dfl import load_dfl, MATCH_IDS, CACHE_DIR  # noqa: E402
+from solution.external_skillcorner import SC_IDS, load_skillcorner  # noqa: E402
 from solution.features import compute_features  # noqa: E402
 from solution.match import X  # noqa: E402
 from solution.relabel import controlled  # noqa: E402
@@ -37,9 +38,27 @@ FEAT_VERSION = 5
 
 def load_ext(mid):
     """External match with labels converted to *controlled* possession (solution/relabel.py)."""
-    m = load_dfl(mid)
+    m = load_skillcorner(mid[2:]) if is_sc(mid) else load_dfl(mid)
     m.labels = controlled(m.labels, m.half)
     return m
+
+
+# Extra labelled games that are always in training and never evaluated (PREREGISTRATION.md,
+# v8): "skillcorner" = SkillCorner's 20 open matches, real broadcast tracking, no simulated
+# degradation, both orientations and two 5 Hz frame offsets each.
+EXTRA = os.environ.get("MTAH_EXTRA", "")
+if EXTRA not in ("", "skillcorner"):
+    raise SystemExit("MTAH_EXTRA must be empty or 'skillcorner'")
+EXTRA_IDS = ["SC" + i for i in SC_IDS] if EXTRA == "skillcorner" else []
+SC_SEEDS = (11, 12)
+
+
+def is_sc(mid):
+    return mid.startswith("SC")
+
+
+def copy_seeds(mid):
+    return SC_SEEDS if is_sc(mid) else TRAIN_SEEDS
 
 LGB_PARAMS = dict(objective="multiclass", num_class=3,
                   learning_rate=float(os.environ.get("MTAH_LR", 0.05)), num_leaves=63,
@@ -75,7 +94,9 @@ def _feat_cache(name):
 def variant_table(mid, swapped, seed, step):
     """Features + label for one degraded variant of an external match (cached)."""
     tag = "{}_{}_s{}_step{}".format(mid, "swap" if swapped else "orig", seed, step)
-    if DEGRADE == "random":
+    if is_sc(mid):
+        tag = "sc_" + tag          # a real tracker's own gaps: no simulated degradation
+    elif DEGRADE == "random":
         tag = ("rndpc_" if TRACKERS == "percopy" else "rnd_") + tag
     path = _feat_cache(tag)
     if os.path.isfile(path):
@@ -83,7 +104,9 @@ def variant_table(mid, swapped, seed, step):
     m = load_ext(mid)
     if swapped:
         m = swap_teams(m)
-    if DEGRADE == "random":
+    if is_sc(mid):
+        pass
+    elif DEGRADE == "random":
         from solution.degrade_random import degrade_random
         m = degrade_random(m, seed=tracker_seed(mid, swapped, seed))
     else:
@@ -103,7 +126,7 @@ def train_rows(mids):
     parts = []
     for mid in mids:
         for swapped in (False, True):
-            for seed in TRAIN_SEEDS:
+            for seed in copy_seeds(mid):
                 t = variant_table(mid, swapped, seed, TRAIN_STEP)
                 t["mid"] = mid
                 parts.append(t)
@@ -119,7 +142,8 @@ def cmd_build(args):
     """Build (and cache) every degraded training copy, several at a time. Each copy is seeded on
     its own, so the tables are the same whatever the number of workers."""
     from concurrent.futures import ProcessPoolExecutor
-    jobs = [(mid, sw, s) for mid in MATCH_IDS for sw in (False, True) for s in TRAIN_SEEDS]
+    jobs = [(mid, sw, s) for mid in MATCH_IDS + EXTRA_IDS for sw in (False, True)
+            for s in copy_seeds(mid)]
     t0 = time.time()
     with ProcessPoolExecutor(args.jobs) as ex:
         for k, job in enumerate(ex.map(_build_one, jobs), 1):
@@ -173,7 +197,7 @@ def cmd_cv(args):
     oof_dir = os.path.join(CACHE_DIR, OOF_SUB)
     os.makedirs(oof_dir, exist_ok=True)
     t0 = time.time()
-    all_rows = train_rows(MATCH_IDS)
+    all_rows = train_rows(MATCH_IDS + EXTRA_IDS)    # extra games: in every fold's training
     cols = feature_columns(all_rows)
     print("train rows {:,}  features {}  ({:.0f}s)".format(len(all_rows), len(cols),
                                                             time.time() - t0))
@@ -212,7 +236,7 @@ def cmd_cv(args):
 
 def cmd_final(args):
     os.makedirs(MODEL_DIR, exist_ok=True)
-    rows = train_rows(MATCH_IDS)
+    rows = train_rows(MATCH_IDS + EXTRA_IDS)
     cols = feature_columns(rows)
     model = fit(rows, cols)
     name = os.environ.get("MTAH_MODEL_NAME", "frame_lgbm_v6")

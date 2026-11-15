@@ -97,11 +97,11 @@ def _sequences(df):
 
 
 def _train_tables(mids):
-    from solution.train import TRAIN_SEEDS, variant_table
+    from solution.train import copy_seeds, variant_table
     seqs = []
     for mid in mids:
         for swapped in (False, True):
-            for seed in TRAIN_SEEDS:
+            for seed in copy_seeds(mid):
                 t = variant_table(mid, swapped, seed, STEP)
                 seqs.extend(_sequences(t))
     return seqs
@@ -220,15 +220,16 @@ def feature_cols(df):
 
 def cmd_cv():
     from solution.external_dfl import CACHE_DIR, MATCH_IDS
-    from solution.train import EXCLUDE as TRAIN_EXCLUDE, TRAIN_STEP, eval_arrays
+    from solution.train import EXCLUDE as TRAIN_EXCLUDE, EXTRA_IDS, TRAIN_STEP, eval_arrays
     assert TRAIN_EXCLUDE == EXCLUDE and TRAIN_STEP == STEP
     out_dir = os.path.join(CACHE_DIR, OOF_DIR)
     os.makedirs(out_dir, exist_ok=True)
-    all_seqs = {mid: _train_tables([mid]) for mid in MATCH_IDS}
+    all_seqs = {mid: _train_tables([mid]) for mid in MATCH_IDS + EXTRA_IDS}
     cols = feature_cols(all_seqs[MATCH_IDS[0]][0])
     for mid in MATCH_IDS:
         t0 = time.time()
-        train = [s for m_ in MATCH_IDS if m_ != mid for s in all_seqs[m_]]
+        # extra games (EXTRA_IDS) are in every fold's training and are never evaluated
+        train = [s for m_ in MATCH_IDS + EXTRA_IDS if m_ != mid for s in all_seqs[m_]]
         norm = Norm(cols).fit(pd.concat(train))
         model = fit(train, norm, log=False)
         m, F = eval_arrays(mid)
@@ -255,8 +256,9 @@ def cmd_cv():
 
 def cmd_final():
     from solution.external_dfl import MATCH_IDS
+    from solution.train import EXTRA_IDS
     torch = _torch()
-    seqs = _train_tables(MATCH_IDS)
+    seqs = _train_tables(MATCH_IDS + EXTRA_IDS)
     cols = feature_cols(seqs[0])
     norm = Norm(cols).fit(pd.concat(seqs))
     model = fit(seqs, norm)
