@@ -1,6 +1,6 @@
 # Frame-level possession from automatic tracking — technical document
 
-*More than a Hack 2027, Phase 1. Version v6 ("clean room"), selected 7 November 2026; document updated 13 November 2026.*
+*More than a Hack 2027, Phase 1. Version v6 ("clean room"), selected 7 November 2026; document updated 15 November 2026.*
 
 ## 1. Approach
 
@@ -45,7 +45,14 @@ on *any* plausible automatic tracker rather than on one simulation of it.
 |---|---|---|---|---|
 | DFL open dataset — Bassek, Rein, Weber, Memmert (2025), *Scientific Data* 12:195, doi:10.6084/m9.figshare.28196177 | CC BY 4.0 | per-frame `BallStatus` (alive/dead) and `BallPossession` (home/away) | the league's official data provider (DFL / Sportec Solutions) | 7 matches, 1.0 M frames at 25 Hz |
 
-No other labelled data and no human-produced data about the provided game.
+The submitted models use no other labelled data, and nothing human-produced about the provided
+game.
+
+**Tested, not in the submitted models:** SkillCorner's open data (credit: SkillCorner,
+github.com/SkillCorner/opendata, MIT licence) — 20 A-League 2024/25 matches of broadcast tracking
+produced automatically from the TV video (10 fps; 3.1 M frames after resampling to 25 fps), with
+team possession taken from SkillCorner's automatic *phases of play*. It was the v8 candidate
+(§6) and was not adopted.
 
 ### Domain randomisation (`degrade_random.py`)
 
@@ -119,6 +126,7 @@ weighting chosen on six matches and scored on the seventh:
 | v4 — calibrated to provided-ATD statistics | 0.707 | 0.745 | 0.586 | 0.679 |
 | **v6 — clean room (submitted)** | **0.776** | **0.783** | **0.761** | **0.774** |
 | v7 — its own tracker for every training copy (not adopted) | 0.782 | 0.787 | 0.762 | 0.777 |
+| v8 — v6 plus SkillCorner's 20 open matches in training (not adopted) | 0.777 | 0.782 | 0.754 | 0.771 |
 
 v6 is better than v4 on all seven held-out matches. \*on the earlier calibrated benchmark.
 
@@ -128,6 +136,22 @@ before v7 was trained (`PREREGISTRATION.md`, addendum of 12 Nov): at least +0.00
 on at least 5 of the 7 matches, no environment worse by more than 0.003. v7 gained +0.0035 and was
 better on 4 of 7 matches — within the noise of seven games — so v6 stays. (LightGBM alone: 0.735
 for v6, 0.733 for v7.)
+
+**v8, tested and not adopted.** v8 changes the training data and nothing else: SkillCorner's 20
+open matches (§3) join every training fold and are never evaluated, so the comparison with v6 is
+paired on the same seven DFL matches. Their tracking is a real automatic tracker, used as it is:
+detections only, resampled to 25 fps, no simulated degradation. Labels: a frame inside a phase of
+play belongs to that phase's team, a frame outside every phase is dead ball (SkillCorner defines
+phases only while the ball is in play), then the same 2 s control relabel. The rule was committed
+before v8 was trained (`PREREGISTRATION.md`, addendum of 15 Nov: the three criteria above). v8
+scored 0.771 nested (−0.0025), was better on 2 of 7 matches and lost 0.007 on the harsh
+environment, so v6 stays. (LightGBM alone: 0.735 for v6, 0.725 for v8.) Two likely reasons, not
+tested further: SkillCorner's ball is seen on about 92% of live frames, far more than the
+57–59% the organisers report for the provided tracking, and v8 lost most where the ball is missing
+most; and its possessions are longer (median 9.1 s after the relabel, 229 per match, against
+6.7 s and 292 for the DFL games), a coarser notion of possession than the one we train for. Part
+of v8's GRU cross-validation ran on cloud GPUs (Modal) — external data only; the provided match
+never left our machine.
 
 The split between the two GRU kinds (70:30) was re-checked on the clean environments against
 50:50 and 90:10: differences ≤ 0.001 in-sample and a lower nested score with the extra choice, so
@@ -151,8 +175,9 @@ where both agree the ball is alive; frames aligned. Seventeen possessions cannot
 * Turnover timing and very short possessions are the main remaining loss.
 * The randomised priors are wide by design; a tracker outside them (for example systematic
   position offsets) is not covered.
-* With more time: more external games, ideally automatic tracking with possession labels from a
-  second provider; a boundary-event model for turnovers.
+* With more time: more external games from an automatic tracker closer to the provided one (a
+  wide tactical camera rather than broadcast video, which v8 tried); a boundary-event model for
+  turnovers.
 
 ## 8. Rules compliance
 
@@ -160,15 +185,16 @@ where both agree the ball is alive; frames aligned. Seventeen possessions cannot
 * **Training and tuning on external games only.** No parameter of the pipeline — simulator,
   models, ensemble weights, decoder, kick-off detector — was fitted to, measured on, or chosen by
   looking at the provided match. The selection rules were committed before the results
-  (`PREREGISTRATION.md`, commit `bac40f6`; addendum for the v7 candidate, commit `f0c5e55`) and
-  every decision is logged (`selection_log.md`).
+  (`PREREGISTRATION.md`, commit `bac40f6`; addenda for the v7 candidate, commit `f0c5e55`, and
+  the v8 candidate, commit `4295309`) and every decision is logged (`selection_log.md`).
 * Checks on the provided match: runtime sanity (row count, validator, byte-identical
   regeneration), numerical-robustness checks that print hashes and counts only (regeneration
   under emulated CPUs, noise injection, equality of the feature table between a fresh parse and
   the cache) and one pipeline check of the final version on the public window.
 * **AI assistance.** An AI coding assistant was used to write and review code. The provided data
   was never uploaded to it or to any other AI service: everything ran locally and only aggregate
-  numbers (counts, rates, metric scores) were ever printed during development.
+  numbers (counts, rates, metric scores) were ever printed during development. Cloud GPUs
+  (Modal) were used once, to cross-validate the v8 candidate on external data only.
 * Feature design and model hyper-parameters were developed in v1–v4 against external benchmarks
   that included the calibrated simulator. v6 retrains every model under randomised degradation and
   re-selects ensemble weighting, decoder and kick-off constants on clean environments only.
@@ -178,7 +204,8 @@ where both agree the ball is alive; frames aligned. Seventeen possessions cannot
   did it (`stats_visibility.py`, `domain_check.py`, `degrade.py`'s calibrated profile) are kept as
   history but are not part of the submission chain.
 * Licences: DFL data CC BY 4.0 (cited above; the committed models are trained on it — see
-  `NOTICE`); starter code and our code MIT.
+  `NOTICE`); SkillCorner open data MIT (v8 only; no committed model is trained on it); starter
+  code and our code MIT.
 
 ## 9. Reproduction
 
@@ -255,7 +282,9 @@ done
 #   python -m solution.clean_select ens_v6_final --save decoder_v6.json \
 #     --cand w0.3=oofc_v6_ens0.3_rnd,oofc_v6_ens0.3_rnd2,oofc_v6_ens0.3_rndh (same for w0.5, w0.7) \
 #     --grid '{"switch_cost":[3,4,6,8,12],"to_dead_cost":[16,32,48],"from_dead_cost":[16,32,48],"min_turnover_s":[2.5],"dead_bias":[-0.5,0.0,0.5]}'
-# the v7 candidate (not adopted) is the same recipe with MTAH_TRACKERS=percopy; two selections are
-# compared under the pre-registered criteria with
+# the v7 candidate (not adopted) is the same recipe with MTAH_TRACKERS=percopy; the v8 candidate
+# (not adopted) adds MTAH_EXTRA=skillcorner, with github.com/SkillCorner/opendata cloned into
+# external/skillcorner-opendata (SEQ_FOLDS=<match id> runs one GRU fold per process); two
+# selections are compared under the pre-registered criteria with
 #   python -m solution.clean_select --compare <candidate name> <incumbent name>
 ```
