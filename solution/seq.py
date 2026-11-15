@@ -226,7 +226,12 @@ def cmd_cv():
     os.makedirs(out_dir, exist_ok=True)
     all_seqs = {mid: _train_tables([mid]) for mid in MATCH_IDS + EXTRA_IDS}
     cols = feature_cols(all_seqs[MATCH_IDS[0]][0])
+    # SEQ_FOLDS=<mid>[,<mid>]: run only these held-out matches (one process per fold, e.g. on
+    # cloud GPUs); every fold seeds its own model (_torch), so the split changes nothing else
+    folds = [f for f in os.environ.get("SEQ_FOLDS", "").split(",") if f]
     for mid in MATCH_IDS:
+        if folds and mid not in folds:
+            continue
         t0 = time.time()
         # extra games (EXTRA_IDS) are in every fold's training and are never evaluated
         train = [s for m_ in MATCH_IDS + EXTRA_IDS if m_ != mid for s in all_seqs[m_]]
