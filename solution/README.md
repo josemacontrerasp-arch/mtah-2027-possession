@@ -1,6 +1,6 @@
 # Frame-level possession from automatic tracking — technical document
 
-*More than a Hack 2027, Phase 1. Version v6 ("clean room"), selected 7 November 2026; document updated 15 November 2026.*
+*Team E.S.V.V Pusphaira · More than a Hack 2027, Phase 1 · version v6 ("clean room"), selected 7 November 2026; document updated 17 November 2026.*
 
 ## 1. Approach
 
